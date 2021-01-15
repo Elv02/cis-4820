@@ -109,6 +109,9 @@ void genMaze(struct floor* maze){
         }
     }
 
+    // Connect all rooms
+    genCorridors(maze);
+
     return;
 }
 
@@ -274,26 +277,42 @@ void genDoors(struct floor* maze, struct room r){
     if(r.cellpos.y != 0){
         r.northDoor.x = randRange(r.origin.x + 1, r.corner.x - 1);
         r.northDoor.y = r.origin.y;
-        charDraw(maze, r.northDoor, 'N');
+        charDraw(maze, r.northDoor, '/');
     }
 
     if(r.cellpos.y != 2){
         r.southDoor.x = randRange(r.origin.x + 1, r.corner.x - 1);
         r.southDoor.y = r.corner.y;
-        charDraw(maze, r.southDoor, 'S');
+        charDraw(maze, r.southDoor, '/');
     }
 
     if(r.cellpos.x != 0){
         r.eastDoor.x = r.origin.x;
         r.eastDoor.y = randRange(r.origin.y + 1, r.corner.y - 1);
-        charDraw(maze, r.eastDoor, 'E');
+        charDraw(maze, r.eastDoor, '/');
     }
 
     if(r.cellpos.x != 2){
         r.westDoor.x = r.corner.x;
         r.westDoor.y = randRange(r.origin.y + 1, r.corner.y - 1);
-        charDraw(maze, r.westDoor, 'W');
+        charDraw(maze, r.westDoor, '/');
     }
+
+    return;
+}
+
+void genCorridors(struct floor* maze){
+    int splitLoc; // Location between the 2 rooms where the corridor 'bends/snakes'
+    
+    // Connect 0,0 to neighbours
+
+    // Connect 2,0 to neighbours
+
+    // Connect 1,1 to neighbours
+
+    // Connect 0,2 to neighbours
+
+    // Connect 2,2 to neighbours
 
     return;
 }

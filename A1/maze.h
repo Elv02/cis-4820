@@ -76,9 +76,9 @@ void genRoom(struct floor* maze, int x, int y);
 void genDoors(struct floor* maze, struct room r);
 
 /*
- * Generate corridors between 2 specified rooms
+ * Generate corridors for all rooms
  */
-// TODO: ADD THIS
+void genCorridors(struct floor* maze);
 
 /*
  * Print the floor data to the console
