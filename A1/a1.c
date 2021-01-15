@@ -325,10 +325,10 @@ int i, j, k;
    } else {
 
 	/* your code to build the world goes here */
-      struct world* dungeonFloor; // Generate floor of the dungeon
+      struct floor* dungeonFloor; // Generate floor of the dungeon
       dungeonFloor = initMaze(100, 100);
       if(DEBUG==0){
-         printf("Retrieved world of size: %d %d\n", dungeonFloor->worldWidth, dungeonFloor->worldHeight);
+         printf("Retrieved world of size: %d %d\n", dungeonFloor->floorWidth, dungeonFloor->floorHeight);
          printMaze(dungeonFloor);
       }
       freeMaze(dungeonFloor);
