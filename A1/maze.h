@@ -1,3 +1,5 @@
+#include <stdbool.h>
+
 // Toggle debug printing (0 to enable, non zero to disable)
 #define DEBUG 0
 
@@ -8,6 +10,11 @@ struct position {
     int x;
     int y;
 };
+
+/*
+ * Direction a hallway will be connected in (E.g. N_S is north to south)
+ */
+enum hallway_direction{N_S, E_W, S_N, W_E};
 
 /*
  * Struct for storing individual room related data
@@ -24,7 +31,12 @@ struct room {
     struct position southDoor;
     struct position eastDoor;
     struct position westDoor;
-    
+    // Track if a hallway connection needs to be made
+    bool connectNorth;
+    bool connectSouth;
+    bool connectEast;
+    bool connectWest;
+
     // Room dimensions
     int roomWidth;
     int roomHeight;
@@ -73,12 +85,18 @@ void genRoom(struct floor* maze, int x, int y);
 /*
  * Generate all needed doors for a specific room
  */
-void genDoors(struct floor* maze, struct room r);
+struct room genDoors(struct floor* maze, struct room r);
 
 /*
- * Generate corridors for all rooms
+ * Generate corridors for all rooms (Driver function)
+ * Actual connections are made with call to connectDoors
  */
 void genCorridors(struct floor* maze);
+
+/*
+ * Connect the doors with a hall from d1 to d2 using direction specified
+ */
+void connectDoors(struct floor* maze, struct position d1, struct position d2, int dir);
 
 /*
  * Print the floor data to the console
@@ -104,6 +122,11 @@ void charDraw(struct floor* maze, struct position p, char toDraw);
  * Draws a straight line between 2 positions
  */
 void lineDraw(struct floor* maze, struct position p1, struct position p2, char toDraw);
+
+/*
+ * Draw a hallway between 2 points
+ */
+void hallDraw(struct floor* maze, struct position p1, struct position p2);
 
 /*
  * Draws a rectangle bounded by the 2 positions (top left and bottom right)

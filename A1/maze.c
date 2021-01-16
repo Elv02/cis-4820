@@ -101,8 +101,8 @@ void genMaze(struct floor* maze){
     genCells(maze);
 
     // Generate rooms
-    for(x = 0; x < 3; x++){
-        for(y = 0; y < 3; y++){
+    for(y = 0; y < 3; y++){
+        for(x = 0; x < 3; x++){
             if(DEBUG==0)
                 printf("Generating room (%d,%d)...\n", x, y);
             genRoom(maze, x, y);
@@ -264,7 +264,7 @@ void genRoom(struct floor* maze, int x, int y){
     toAdd.roomWidth = toAdd.corner.x - toAdd.origin.x;
 
     // Lastly, generate the doors for the room
-    genDoors(maze, toAdd);
+    toAdd = genDoors(maze, toAdd);
 
     // Add the room to the maze
     maze->rooms[x][y] = toAdd;
@@ -272,55 +272,161 @@ void genRoom(struct floor* maze, int x, int y){
     return;
 }
 
-void genDoors(struct floor* maze, struct room r){
+struct room genDoors(struct floor* maze, struct room r){
 
     if(r.cellpos.y != 0){
         r.northDoor.x = randRange(r.origin.x + 1, r.corner.x - 1);
         r.northDoor.y = r.origin.y;
         charDraw(maze, r.northDoor, '/');
+        r.connectNorth = true;
+    } else {
+        r.northDoor.x = -1;
+        r.northDoor.y = -1;
+        r.connectNorth = false;
     }
 
     if(r.cellpos.y != 2){
         r.southDoor.x = randRange(r.origin.x + 1, r.corner.x - 1);
         r.southDoor.y = r.corner.y;
         charDraw(maze, r.southDoor, '/');
+        r.connectSouth = true;
+    } else {
+        r.southDoor.x = -1;
+        r.southDoor.y = -1;
+        r.connectSouth = false;
     }
 
     if(r.cellpos.x != 0){
-        r.eastDoor.x = r.origin.x;
-        r.eastDoor.y = randRange(r.origin.y + 1, r.corner.y - 1);
-        charDraw(maze, r.eastDoor, '/');
+        r.westDoor.x = r.origin.x;
+        r.westDoor.y = randRange(r.origin.y + 1, r.corner.y - 1);
+        charDraw(maze, r.westDoor, '/');
+        r.connectWest = true;
+    } else {
+        r.westDoor.x = -1;
+        r.westDoor.y = -1;
+        r.connectWest = false;
     }
 
     if(r.cellpos.x != 2){
-        r.westDoor.x = r.corner.x;
-        r.westDoor.y = randRange(r.origin.y + 1, r.corner.y - 1);
-        charDraw(maze, r.westDoor, '/');
+        r.eastDoor.x = r.corner.x;
+        r.eastDoor.y = randRange(r.origin.y + 1, r.corner.y - 1);
+        charDraw(maze, r.eastDoor, '/');
+        r.connectEast = true;
+    } else {
+        r.eastDoor.x = -1;
+        r.eastDoor.y = -1;
+        r.connectEast = false;
+    }
+
+
+    return r;
+}
+
+void genCorridors(struct floor* maze){
+    /*int splitLoc; // Location between the 2 rooms where the corridor 'bends/snakes'
+    struct position door1; 
+    struct position door2; 
+    struct position turn1;
+    struct position turn2;*/
+
+    int x, y;
+
+    if(DEBUG==0)
+        printf("Generating corridor pathways...\n");
+
+    for(y = 0; y < 3; y++){
+        for(x = 0; x < 3; x++){
+            if(maze->rooms[x][y].connectNorth){
+                connectDoors(maze, maze->rooms[x][y].northDoor, maze->rooms[x][y-1].southDoor, N_S);
+                maze->rooms[x][y].connectNorth = false;
+                maze->rooms[x][y-1].connectSouth = false;
+            }
+            if(maze->rooms[x][y].connectSouth){
+                connectDoors(maze, maze->rooms[x][y].southDoor, maze->rooms[x][y+1].northDoor, S_N);
+                maze->rooms[x][y].connectSouth = false;
+                maze->rooms[x][y+1].connectNorth = false;
+            }
+            if(maze->rooms[x][y].connectEast){
+                connectDoors(maze, maze->rooms[x][y].eastDoor, maze->rooms[x+1][y].westDoor, E_W);
+                maze->rooms[x][y].connectEast = false;
+                maze->rooms[x+1][y].connectWest = false;
+            }
+            if(maze->rooms[x][y].connectWest){
+                connectDoors(maze, maze->rooms[x][y].westDoor, maze->rooms[x-1][y].eastDoor, W_E);
+                maze->rooms[x][y].connectWest = false;
+                maze->rooms[x-1][y].connectEast = false;
+            }
+        }
     }
 
     return;
 }
 
-void genCorridors(struct floor* maze){
-    int splitLoc; // Location between the 2 rooms where the corridor 'bends/snakes'
-    
-    // Connect 0,0 to neighbours
+void connectDoors(struct floor* maze, struct position d1, struct position d2, int dir){
+    struct position start; // Start of hallway
+    struct position stop;  // End of hallway
+    struct position bend1; // First bend in hallway after start
+    struct position bend2; // Second bend in hallway just before stop
+    int splitLoc;          // Location between the 2 doors where the hallway 'splits'
 
-    // Connect 2,0 to neighbours
-
-    // Connect 1,1 to neighbours
-
-    // Connect 0,2 to neighbours
-
-    // Connect 2,2 to neighbours
-
+    // Determine all points in the hallway
+    switch(dir){
+        case N_S:
+            splitLoc = randRange(d2.y + 2, d1.y - 2);
+            start.x = d1.x;
+            start.y = d1.y + 1;
+            stop.x = d2.x;
+            stop.y = d2.y - 1;
+            bend1.x = d1.x;
+            bend1.y = splitLoc;
+            bend2.x = d2.x;
+            bend2.y = splitLoc;
+            break;
+        case S_N:
+            splitLoc = randRange(d1.y + 2, d2.y - 2);
+            start.x = d1.x;
+            start.y = d1.y + 1;
+            stop.x = d2.x;
+            stop.y = d2.y - 1;
+            bend1.x = d1.x;
+            bend1.y = splitLoc;
+            bend2.x = d2.x;
+            bend2.y = splitLoc;
+            break;
+        case E_W:
+            splitLoc = randRange(d1.x + 2, d2.x - 2);
+            start.x = d1.x + 1;
+            start.y = d1.y;
+            stop.x = d2.x - 1;
+            stop.y = d2.y;
+            bend1.x = splitLoc;
+            bend1.y = d1.y;
+            bend2.x = splitLoc;
+            bend2.y = d2.y;
+            break;
+        case W_E:
+            splitLoc = randRange(d2.x + 2, d1.x - 2);
+            start.x = d1.x - 1;
+            start.y = d1.y;
+            stop.x = d2.x + 1;
+            stop.y = d2.y;
+            bend1.x = splitLoc;
+            bend1.y = d1.y;
+            bend2.x = splitLoc;
+            bend2.y = d2.y;
+            break;
+    }
+    // Draw the connections to the world using the calculated points
+    lineDraw(maze, start, bend1, '+');
+    lineDraw(maze, bend1, bend2, '+');
+    lineDraw(maze, bend2, stop, '+');
     return;
 }
 
 void printMaze(struct floor* maze){
     int x, y;
-    for(x = 0; x < maze->floorWidth; x++){
-        for(y = 0; y < maze->floorHeight; y++){
+    for(y = 0; y < maze->floorWidth; y++){
+        for(x = 0; x < maze->floorHeight; x++){
             printf("%c", maze->floorData[x][y]);
         }
         printf("\n");
@@ -356,7 +462,7 @@ void lineDraw(struct floor* maze, struct position p1, struct position p2, char t
     int upper, lower, i;
 
     if(DEBUG==0)
-        printf("Drawing line...\n");
+        printf("Drawing line (%d,%d) -> (%d,%d)...\n", p1.x, p1.y, p2.x, p2.y);
 
     // Draw a vertical line
     if(p1.x == p2.x){
