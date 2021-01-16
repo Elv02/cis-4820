@@ -52,8 +52,10 @@ struct floor {
 
     // 'Cell' dividers (room zones)
     int hd1, hd2, vd1, vd2;
-    // 2D Char array containing all data for this floor
+    // 2D Char array containing all data for this floorplan (geometry)
     char** floorData;
+    // 2D Char array containing all entity data for this floor (player position, enemy positions, loot locations, etc)
+    char** floorEntities;
     // 2D Struct array containing room data for this floor
     struct room** rooms;
 };
@@ -99,6 +101,17 @@ void genCorridors(struct floor* maze);
 void connectDoors(struct floor* maze, struct position d1, struct position d2, int dir);
 
 /*
+ * Check over the entire floor and make sure all hallways are fully enclosed
+ * (Done seperately after halls generated in event of overlapping halls blocking each other)
+ */
+void wallOffHalls(struct floor* maze);
+
+/*
+ * Populate the rooms (set player position, spawn mobs, drop loot, add decor, etc)
+ */
+void populateFloor(struct floor* maze);
+
+/*
  * Print the floor data to the console
  */
 void printMaze(struct floor* maze);
@@ -112,6 +125,12 @@ void freeMaze(struct floor* maze);
  * Utility function: returns a random integer within the bounds between low and high
  */
 int randRange(int low, int high);
+
+/*
+ * Utility function for detail placement.  Checks if a specified tile in the world
+ * is adjacent to a door tile ('/') to ensure rooms are 'boxed in'
+ */
+bool isBlockingDoor(struct floor* maze, int x, int y);
 
 /*
  * Draw a character onto the maze at a given position

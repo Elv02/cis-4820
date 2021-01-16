@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <stdbool.h>
+#include <math.h>
 
 #include "maze.h"
 
@@ -28,6 +29,7 @@ struct floor* initMaze(int floorWidth, int floorHeight){
 
     // Allocate floor data
     toRet->floorData = (char**)malloc(toRet->floorWidth * sizeof(char*));
+    toRet->floorEntities = (char**)malloc(toRet->floorWidth * sizeof(char*));
 
     // Sanity check
     if(toRet->floorData==NULL){
@@ -36,6 +38,7 @@ struct floor* initMaze(int floorWidth, int floorHeight){
         return NULL;
     }
 
+    // Init floorplan
     for(i = 0; i < toRet->floorWidth; i++){
         toRet->floorData[i] = (char*)malloc(toRet->floorHeight * sizeof(char));
         if(toRet->floorData[i] == NULL){
@@ -45,6 +48,21 @@ struct floor* initMaze(int floorWidth, int floorHeight){
                 free(toRet->floorData[--i]);
             }
             free(toRet->floorData);
+            free(toRet);
+            return NULL;
+        }
+    }
+
+    // Init entity array
+    for(i = 0; i < toRet->floorWidth; i++){
+        toRet->floorEntities[i] = (char*)malloc(toRet->floorHeight * sizeof(char));
+        if(toRet->floorEntities[i] == NULL){
+            fprintf(stderr, "ERROR: floor data for column %d could not be allocated! Aborting!", i);
+            // Attempt cleanup!
+            while(i>=0){
+                free(toRet->floorEntities[--i]);
+            }
+            free(toRet->floorEntities);
             free(toRet);
             return NULL;
         }
@@ -92,6 +110,7 @@ void genMaze(struct floor* maze){
     for(x = 0; x < maze->floorWidth; x++){
         for(y = 0; y < maze->floorHeight; y++){
             maze->floorData[x][y] = ' ';
+            maze->floorEntities[x][y] = ' ';
         }
     }
 
@@ -111,6 +130,12 @@ void genMaze(struct floor* maze){
 
     // Connect all rooms
     genCorridors(maze);
+    
+    // Enclose all corridors with walls
+    wallOffHalls(maze);
+
+    // Populate the rooms (set player position, spawn mobs, drop loot, add decor, etc)
+    populateFloor(maze);
 
     return;
 }
@@ -166,25 +191,25 @@ void genCells(struct floor* maze){
     p1.y = 0;
     p2.x = maze->hd1;
     p2.y = (maze->floorHeight) - 1;
-    lineDraw(maze, p1, p2, '%');
+    // lineDraw(maze, p1, p2, '%');
 
     p1.x = maze->hd2;
     p1.y = 0;
     p2.x = maze->hd2;
     p2.y = (maze->floorHeight) - 1;
-    lineDraw(maze, p1, p2, '%');
+    // lineDraw(maze, p1, p2, '%');
 
     p1.x = 0;
     p1.y = maze->vd1;
     p2.x = (maze->floorWidth) - 1;
     p2.y = maze->vd1;
-    lineDraw(maze, p1, p2, '%');
+    // lineDraw(maze, p1, p2, '%');
 
     p1.x = 0;
     p1.y = maze->vd2;
     p2.x = (maze->floorWidth) - 1;
     p2.y = maze->vd2;
-    lineDraw(maze, p1, p2, '%');
+    // lineDraw(maze, p1, p2, '%');
     return;
 }
 
@@ -323,12 +348,6 @@ struct room genDoors(struct floor* maze, struct room r){
 }
 
 void genCorridors(struct floor* maze){
-    /*int splitLoc; // Location between the 2 rooms where the corridor 'bends/snakes'
-    struct position door1; 
-    struct position door2; 
-    struct position turn1;
-    struct position turn2;*/
-
     int x, y;
 
     if(DEBUG==0)
@@ -423,11 +442,66 @@ void connectDoors(struct floor* maze, struct position d1, struct position d2, in
     return;
 }
 
+void wallOffHalls(struct floor* maze){
+    int x, y, x1, y1;
+    for(y = 0; y < maze->floorHeight; y++){
+        for(x = 0; x < maze->floorWidth; x++){
+            // Found a hallway!
+            if(maze->floorData[x][y]=='+'){
+                // Search surrounding spaces
+                for(y1 = y - 1; y1 <= y + 1; y1++){
+                    for(x1 = x - 1; x1 <= x + 1; x1++){
+                        // Fill any empty spaces with a wall (prevents overwrite of already populated spaces (doors, other hall tiles, etc))
+                        if(maze->floorData[x1][y1]==' ')
+                            maze->floorData[x1][y1] = '#';       
+                    }
+                }
+            }
+        }
+    }
+    return;
+}
+
+void populateFloor(struct floor* maze){
+    struct position pen; // Point for writing to the maze
+    int numBoxes; // Number of boxes to spawn in a given room
+    int x, y;
+
+    // Pick a player spawn position (Choose room and random spot in room)
+    x = randRange(0, 2);
+    y = randRange(0, 2);
+    pen.x = randRange(maze->rooms[x][y].origin.x + 1, maze->rooms[x][y].corner.x - 1);
+    pen.y = randRange(maze->rooms[x][y].origin.y + 1, maze->rooms[x][y].corner.y - 1);
+    maze->floorEntities[pen.x][pen.y] = '@';
+
+    // Toss some random boxes into each room
+    for(y = 0; y < 3; y++){
+        for(x = 0; x < 3; x++){
+            int max = (int)floor(sqrt(maze->rooms[x][y].roomWidth * maze->rooms[x][y].roomHeight));
+            numBoxes = randRange(0, max);
+            while(numBoxes>0){
+                pen.x = randRange(maze->rooms[x][y].origin.x + 1, maze->rooms[x][y].corner.x - 1);
+                pen.y = randRange(maze->rooms[x][y].origin.y + 1, maze->rooms[x][y].corner.y - 1);
+                if(maze->floorEntities[pen.x][pen.y]==' ' && !isBlockingDoor(maze, pen.x, pen.y)){
+                    maze->floorEntities[pen.x][pen.y] = 'B';
+                } 
+                numBoxes--;
+            }
+        }
+    }
+
+    return;
+}
+
 void printMaze(struct floor* maze){
     int x, y;
     for(y = 0; y < maze->floorWidth; y++){
         for(x = 0; x < maze->floorHeight; x++){
-            printf("%c", maze->floorData[x][y]);
+            // If there is no entity in the current space print the level geometry
+            if(maze->floorEntities[x][y]==' ')
+                printf("%c", maze->floorData[x][y]);
+            else
+                printf("%c", maze->floorEntities[x][y]);
         }
         printf("\n");
     }
@@ -438,8 +512,10 @@ void freeMaze(struct floor* maze){
     int x;
     for(x = 0; x < maze->floorWidth; x++){
         free(maze->floorData[x]);
+        free(maze->floorEntities[x]);
     }
     free(maze->floorData);
+    free(maze->floorEntities);
     for(x = 0; x < 3; x++){
         free(maze->rooms[x]);
     }
@@ -450,6 +526,17 @@ void freeMaze(struct floor* maze){
 
 int randRange(int low, int high){
     return (rand() % (high - low + 1) + low);
+}
+
+bool isBlockingDoor(struct floor* maze, int x, int y){
+    int x1, y1;
+    for(y1 = y - 1; y1 <= y + 1; y1++){
+        for(x1 = x - 1; x1 <= x + 1; x1++){
+            if(maze->floorData[x1][y1]=='/')
+                return true;
+        }
+    }
+    return false;
 }
 
 void charDraw(struct floor* maze, struct position p, char toDraw){
