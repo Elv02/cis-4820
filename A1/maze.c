@@ -287,6 +287,7 @@ void genRoom(struct floor* maze, int x, int y){
     // Populate extra room parameters
     toAdd.roomHeight = toAdd.corner.y - toAdd.origin.y;
     toAdd.roomWidth = toAdd.corner.x - toAdd.origin.x;
+    toAdd.ceilHeight = randRange(2, 10);
 
     // Lastly, generate the doors for the room
     toAdd = genDoors(maze, toAdd);
@@ -526,6 +527,39 @@ void freeMaze(struct floor* maze){
 
 int randRange(int low, int high){
     return (rand() % (high - low + 1) + low);
+}
+
+int getCeilHeight(struct floor* maze, int x, int y){
+    int x1, y1;
+    bool inRoom = false;
+    struct room r;
+    // First, sanity check
+    if(x>=maze->floorWidth||y>=maze->floorHeight){
+        return 0;
+    // Check for the void
+    } else if(maze->floorData[x][y]==' '){
+        return 0;
+    } else {
+        // Check all rooms
+        for(y1 = 0; y1 < 3; y1++){
+            for(x1 = 0; x1 < 3; x1++){
+                if(x>=maze->rooms[x1][y1].origin.x && y>=maze->rooms[x1][y1].origin.y
+                    && x<=maze->rooms[x1][y1].corner.x && y<=maze->rooms[x1][y1].corner.y){
+                        inRoom = true;
+                        r = maze->rooms[x1][y1];
+                        break;
+                }
+            }
+            if(inRoom){
+                break;
+            }
+        }
+        if(inRoom){
+            return r.ceilHeight;
+        } else {
+            return 2;
+        }
+    }
 }
 
 bool isBlockingDoor(struct floor* maze, int x, int y){

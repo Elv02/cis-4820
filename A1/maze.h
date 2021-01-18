@@ -40,6 +40,7 @@ struct room {
     // Room dimensions
     int roomWidth;
     int roomHeight;
+    int ceilHeight; // For the engine, how 'tall' this room is
 };
 
 /*
@@ -125,6 +126,13 @@ void freeMaze(struct floor* maze);
  * Utility function: returns a random integer within the bounds between low and high
  */
 int randRange(int low, int high);
+
+/*
+ * Utility function for getting ceiling height at an x y coordinate.
+ * Will return default height 2 when in a corridor, 0 when pointing to empty space
+ * and the room height otherwise
+ */
+int getCeilHeight(struct floor* maze, int x, int y);
 
 /*
  * Utility function for detail placement.  Checks if a specified tile in the world

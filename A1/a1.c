@@ -133,8 +133,8 @@ void draw2D() {
          draw2Dbox(500, 380, 524, 388);
       }
    } else {
-
 	/* your code goes here */
+      
 
    }
 
@@ -268,7 +268,9 @@ void mouse(int button, int state, int x, int y) {
 
 int main(int argc, char** argv)
 {
-int i, j, k;
+   int i, j, k;
+   /* Data struct containing all information for a single floor in the dungeon */
+   struct floor* dungeonFloor; 
 	/* initialize the graphics system */
    graphicsInit(&argc, argv);
 
@@ -325,22 +327,74 @@ int i, j, k;
    } else {
 
 	/* your code to build the world goes here */
-      struct floor* dungeonFloor; // Generate floor of the dungeon
+      int x, y;
+      int ceilHeight;
+      int drawHeight = 25; // World draw height
+      // First generate the world
       dungeonFloor = initMaze(100, 100);
       if(DEBUG==0){
          printf("Retrieved world of size: %d %d\n", dungeonFloor->floorWidth, dungeonFloor->floorHeight);
          printMaze(dungeonFloor);
       }
-      freeMaze(dungeonFloor);
-
-      //printMaze(dungeonFloor, 100, 100);
-      //freeArray(dungeonFloor, 100);
+      // Next build the world data
+      for(y = 0; y < dungeonFloor->floorHeight; y++){
+         for(x = 0; x < dungeonFloor->floorWidth; x++){
+            ceilHeight = getCeilHeight(dungeonFloor, x, y);
+            // Floor tile 1
+            if(dungeonFloor->floorData[x][y]=='.'){
+               world[x][drawHeight][y] = 2;
+               // TODO: Draw ceiling
+               world[x][drawHeight+ceilHeight+1][y] = 2;
+            }
+            // Floor tile 2
+            else if(dungeonFloor->floorData[x][y]==','){
+               world[x][drawHeight][y] = 6;
+               // TODO: Draw ceiling
+               world[x][drawHeight+ceilHeight+1][y] = 2;
+            }
+            // Corridors
+            else if(dungeonFloor->floorData[x][y]=='+'){
+               world[x][drawHeight][y] = 3; // Corridor floor tile
+               world[x][drawHeight+ceilHeight+1][y] = 2;
+            }
+            // Walls
+            else if(dungeonFloor->floorData[x][y]=='#'){
+               for(i = 0; i <= ceilHeight + 1; i++){
+                  world[x][drawHeight+i][y] = 1;
+               }
+            }
+            // Doors
+            else if(dungeonFloor->floorData[x][y]=='/'){
+               world[x][drawHeight][y] = 1; // Draw floor below the door
+               world[x][drawHeight+1][y] = 7; // Draw the door itself
+               for(i = 2; i <= ceilHeight + 1; i++){
+                  world[x][drawHeight+i][y] = 1;
+               }
+            }
+         }
+      }
+      // Next iterate over the entity list (For now just player placement & boxes)
+      for(y = 0; y < dungeonFloor->floorHeight; y++){
+         for(x = 0; x < dungeonFloor->floorWidth; x++){
+            // Player found! Setup at coordinates
+            if(dungeonFloor->floorEntities[x][y]=='@'){
+               if(DEBUG==0)
+                  printf("Setting player 0 at (%d, %d, %d)...\n", x, drawHeight+1, y);
+               createPlayer(0, x, drawHeight+1, y, 0.0);
+            } else if(dungeonFloor->floorEntities[x][y]=='B'){
+               world[x][drawHeight+1][y] = 8;
+            }
+         }
+      }
    }
 
 
 	/* starts the graphics processing loop */
 	/* code after this will not run until the program exits */
    glutMainLoop();
+
+   // Cleanup
+   freeMaze(dungeonFloor);
    return 0; 
 }
 
