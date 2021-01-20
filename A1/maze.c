@@ -287,7 +287,7 @@ void genRoom(struct floor* maze, int x, int y){
     // Populate extra room parameters
     toAdd.roomHeight = toAdd.corner.y - toAdd.origin.y;
     toAdd.roomWidth = toAdd.corner.x - toAdd.origin.x;
-    toAdd.ceilHeight = randRange(2, 10);
+    toAdd.ceilHeight = randRange(3, 10);
 
     // Lastly, generate the doors for the room
     toAdd = genDoors(maze, toAdd);
@@ -557,7 +557,7 @@ int getCeilHeight(struct floor* maze, int x, int y){
         if(inRoom){
             return r.ceilHeight;
         } else {
-            return 2;
+            return 3;
         }
     }
 }

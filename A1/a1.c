@@ -106,7 +106,65 @@ extern void getUserColour(int, GLfloat *, GLfloat *, GLfloat *, GLfloat *,
 void collisionResponse() {
 
 	/* your code for collisions goes here */
+   // Get what we are about to hit
+   int hit;
+   // Current viewpoint coords
+   float x, y, z;
+   // Old viewpoint coords
+   float oX, oY, oZ;
+   // New viewport coords (extrapolate where we're heading)
+   float nX, nY, nZ;
 
+   // Populate our coord values
+   getViewPosition(&x, &y, &z);
+   getOldViewPosition(&oX, &oY, &oZ);
+   
+   // Invert values to make calculations easier
+   x = -x;
+   y = -y;
+   z = -z;
+   oX = -oX;
+   oY = -oY;
+   oZ = -oZ;
+
+   // Calculate our predicted position if we keep going this way
+   nX = x + 2*(x - oX);
+   nY = y + 2*(y - oY);
+   nZ = z + 2*(z - oZ);
+
+   // Report status for debug
+   if(x!=oX||y!=oY||z!=oZ)
+      printf("Collision check:\nPlayer is at: %lf %lf %lf\nPlayer was at: %lf %lf %lf\nPlayer going to: %lf %lf %lf\n", x, y, z, oX, oY, oZ, nX, nY, nZ);
+
+   // Perform collision check at the predicted space
+   hit = world[(int)nX][(int)nY][(int)nZ];
+   // Collision!
+   if(hit != 0){
+      // We hit a door, open it
+      if(hit == 7){
+         // Open this door block
+         world[(int)nX][(int)nY][(int)nZ] = 0;
+         // Open the door block above or below this one
+         if(world[(int)nX][(int)nY - 1][(int)nZ] == 7)
+            world[(int)nX][(int)nY - 1][(int)nZ] = 0;
+         else
+            world[(int)nX][(int)nY + 1][(int)nZ] = 0;
+      // We hit a solid block
+      } else {
+         // Perform climb check
+         if(world[(int)nX][(int)nY + 1][(int)nZ] == 0){
+            // Climb the box
+            setViewPosition(-nX, -nY - 1, -nZ);
+         // Perform floor check
+         } else if(world[(int)nX][(int)oY - 1][(int)nZ] != 0){
+            // Undo falling motion but also still follow through on other motion
+            setViewPosition(-x, -oY, -z);
+         } else {
+            // Revert our position back to the old position
+            setViewPosition(-oX, -oY, -oZ);
+         }
+      }
+   }
 }
 
 
@@ -237,6 +295,18 @@ createTube(2, -xx, -yy, -zz, -xx-((x-xx)*25.0), -yy-((y-yy)*25.0), -zz-((z-zz)*2
    } else {
 
 	/* your code goes here */
+      // Get old position data
+      getViewPosition(&x, &y, &z);
+      setOldViewPosition(x,y,z);
+
+      // Apply gravity
+      y = y + 0.01;
+
+      // Update view position
+      setViewPosition(x, y, z);
+
+      // Perform a collision check
+      collisionResponse();
 
    }
 }
@@ -330,6 +400,8 @@ int main(int argc, char** argv)
       int x, y;
       int ceilHeight;
       int drawHeight = 25; // World draw height
+      // Disable fleight 
+      flycontrol = 0;
       // First generate the world
       dungeonFloor = initMaze(100, 100);
       if(DEBUG==0){
@@ -343,13 +415,11 @@ int main(int argc, char** argv)
             // Floor tile 1
             if(dungeonFloor->floorData[x][y]=='.'){
                world[x][drawHeight][y] = 2;
-               // TODO: Draw ceiling
                world[x][drawHeight+ceilHeight+1][y] = 2;
             }
             // Floor tile 2
             else if(dungeonFloor->floorData[x][y]==','){
                world[x][drawHeight][y] = 6;
-               // TODO: Draw ceiling
                world[x][drawHeight+ceilHeight+1][y] = 2;
             }
             // Corridors
@@ -367,7 +437,8 @@ int main(int argc, char** argv)
             else if(dungeonFloor->floorData[x][y]=='/'){
                world[x][drawHeight][y] = 1; // Draw floor below the door
                world[x][drawHeight+1][y] = 7; // Draw the door itself
-               for(i = 2; i <= ceilHeight + 1; i++){
+               world[x][drawHeight+2][y] = 7; // Draw the door itself
+               for(i = 3; i <= ceilHeight + 1; i++){
                   world[x][drawHeight+i][y] = 1;
                }
             }
@@ -380,9 +451,14 @@ int main(int argc, char** argv)
             if(dungeonFloor->floorEntities[x][y]=='@'){
                if(DEBUG==0)
                   printf("Setting player 0 at (%d, %d, %d)...\n", x, drawHeight+1, y);
+               // TODO: Get rid of this static player template and update viewport start location
                createPlayer(0, x, drawHeight+1, y, 0.0);
+               // Setup viewport
+               setViewPosition(-x - 0.5, -drawHeight - 1.5, -y - 0.5);
+               setViewOrientation(0, 0, 0);
+            // Box found!
             } else if(dungeonFloor->floorEntities[x][y]=='B'){
-               world[x][drawHeight+1][y] = 8;
+               world[x][drawHeight+1][y] = 8; // Draw a box
             }
          }
       }
