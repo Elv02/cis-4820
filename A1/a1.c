@@ -132,12 +132,14 @@ void collisionResponse() {
    nY = y + 2*(y - oY);
    nZ = z + 2*(z - oZ);
 
-   // Report status for debug
-   if(x!=oX||y!=oY||z!=oZ)
-      printf("Collision check:\nPlayer is at: %lf %lf %lf\nPlayer was at: %lf %lf %lf\nPlayer going to: %lf %lf %lf\n", x, y, z, oX, oY, oZ, nX, nY, nZ);
-
    // Perform collision check at the predicted space
    hit = world[(int)nX][(int)nY][(int)nZ];
+
+   // Set consistent floor position if standing on solid ground
+   if(world[(int)x][(int)(y-1)][(int)z] != 0){
+      setViewPosition(-x, -(floor(y)+1), -z);
+   }
+
    // Collision!
    if(hit != 0){
       // We hit a door, open it
@@ -156,9 +158,6 @@ void collisionResponse() {
             // Climb the box
             setViewPosition(-nX, -nY - 1, -nZ);
          // Perform floor check
-         } else if(world[(int)nX][(int)oY - 1][(int)nZ] != 0){
-            // Undo falling motion but also still follow through on other motion
-            setViewPosition(-x, -oY, -z);
          } else {
             // Revert our position back to the old position
             setViewPosition(-oX, -oY, -oZ);
@@ -454,7 +453,7 @@ int main(int argc, char** argv)
                // TODO: Get rid of this static player template and update viewport start location
                createPlayer(0, x, drawHeight+1, y, 0.0);
                // Setup viewport
-               setViewPosition(-x - 0.5, -drawHeight - 1.5, -y - 0.5);
+               setViewPosition(-x - 0.5, -drawHeight - 2, -y - 0.5);
                setViewOrientation(0, 0, 0);
             // Box found!
             } else if(dungeonFloor->floorEntities[x][y]=='B'){
