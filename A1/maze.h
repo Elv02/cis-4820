@@ -1,7 +1,7 @@
 #include <stdbool.h>
 
 // Toggle debug printing (0 to enable, non zero to disable)
-#define DEBUG 0
+#define DEBUG 1
 
 /*
  * Basic struct for tracking 2d positions
@@ -24,7 +24,7 @@ struct room {
     struct position origin;
     // Floor position of the corner opposite the origin for the room
     struct position corner;
-    // Chunk/cell position of this room (ranges for (0,0) to (2,2))
+    // Chunk/cell position of this room (ranges from (0,0) to (2,2))
     struct position cellpos;
     // Floor position for the doors in this room
     struct position northDoor;
@@ -136,7 +136,7 @@ int getCeilHeight(struct floor* maze, int x, int y);
 
 /*
  * Utility function for detail placement.  Checks if a specified tile in the world
- * is adjacent to a door tile ('/') to ensure rooms are 'boxed in'
+ * is adjacent to a door tile ('/') to ensure doors are  not 'cut off'
  */
 bool isBlockingDoor(struct floor* maze, int x, int y);
 
@@ -153,7 +153,7 @@ void lineDraw(struct floor* maze, struct position p1, struct position p2, char t
 /*
  * Draw a hallway between 2 points
  */
-void hallDraw(struct floor* maze, struct position p1, struct position p2);
+//void hallDraw(struct floor* maze, struct position p1, struct position p2);
 
 /*
  * Draws a rectangle bounded by the 2 positions (top left and bottom right)

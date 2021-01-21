@@ -876,7 +876,7 @@ int i, fullscreen;
       if (strcmp(argv[i],"-server") == 0)
          netServer = 1;
       if (strcmp(argv[i],"-help") == 0) {
-         printf("Usage: a4 [-full] [-drawall] [-testworld] [-fps] [-client] [-server]\n");
+         printf("Usage: a1 [-full] [-drawall] [-testworld] [-fps] [-client] [-server]\n");
          exit(0);
       }
    }
