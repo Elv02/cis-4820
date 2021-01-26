@@ -8,9 +8,15 @@
 | Compilation Instructions |
 |==========================|
 
+The provided makefile is setup for Linux Libraries by default. The
+path for MACOS are also provided but is commented out.
+
 To compile the program use the makefile by executing the 'make' command
 while in the directory containing 'makefile'.  This will generate an 
 executable called 'a1'.
+
+IMPORTANT NOTE: If using another Makefile that is not the provided one,
+you *must* be sure to include the maze.c file when running gcc!
 
 | Execution Instructions |
 |========================|   

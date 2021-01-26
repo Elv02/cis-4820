@@ -49,7 +49,7 @@
 LIBS = -lGL -lGLU -lglut -lm -D__LINUX__
 
 a1: a1.c graphics.c visible.c graphics.h
-	gcc -g a1.c maze.c graphics.c visible.c -o a1 $(LIBS)
+	gcc a1.c maze.c graphics.c visible.c -o a1 $(LIBS)
 
 clean:
 	rm a1
