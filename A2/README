@@ -1,0 +1,48 @@
+|========================|
+| Warren Hoeft (0872179) |
+|  CIS 4820 Assignment 1 |
+|       01/21/2020       |
+|========================|
+
+
+| Compilation Instructions |
+|==========================|
+
+The provided makefile is setup for Linux Libraries by default. The
+path for MACOS are also provided but is commented out.
+
+To compile the program use the makefile by executing the 'make' command
+while in the directory containing 'makefile'.  This will generate an 
+executable called 'a1'.
+
+IMPORTANT NOTE: If using another Makefile that is not the provided one,
+you *must* be sure to include the maze.c in addition to the a1.c, graphics.c
+and visible.c files when running gcc!
+
+| Execution Instructions |
+|========================|   
+
+To run the program use '/a1'.  Optionally you may use the '-help' flag
+to see a list of available commands.
+
+| Important Implementation Notes |
+|================================|
+
+1) There is a bonus feature I have implemented into this program that is not in
+the outline.  If you approach the orange 'doors' at the edge of a room they
+will open when you touch them.  This allows the player to better track where
+they have been so far in the maze and what doors they have/have not entered.
+
+2) The player spawns atop a 'player' model (generated from the provided
+"createPlayer" function) which I have left in as a marker to show the players
+starting point. 
+
+3) There is one note to make regarding the collision detection in this program.
+While I make a sincere effort to predict and mitigate collisions that put 
+the player's view within world geometry, it *is* still possible to enter
+world geometry if you are determined enough and approach a wall at a fairly
+small angle (parallel to the wall).
+
+I spoke with the professor during lecture time about this issue, and he was
+of the opinion that this should solution should still be sufficient enough
+to count as "preventing the view from entering world geometry". 
