@@ -5,6 +5,7 @@
 #include <math.h>
 
 #include "maze.h"
+#include "perlin.h"
 
 struct floor* initMaze(int floorWidth, int floorHeight, bool isOutdoors){
     struct floor* toRet;
@@ -30,12 +31,30 @@ struct floor* initMaze(int floorWidth, int floorHeight, bool isOutdoors){
     // Allocate floor data
     toRet->floorData = (char**)malloc(toRet->floorWidth * sizeof(char*));
     toRet->floorEntities = (char**)malloc(toRet->floorWidth * sizeof(char*));
+    toRet->heightMap = (float**)malloc(toRet->floorWidth * sizeof(float*));
 
     // Sanity check
     if(toRet->floorData==NULL){
         fprintf(stderr, "ERROR: Could not allocate base for floorData array! Aborting...\n");
         free(toRet);
         return NULL;
+    }
+
+    // Init heightmap
+    if(isOutdoors){
+        for(i = 0; i < toRet->floorWidth; i++){
+            toRet->heightMap[i] = (float*)malloc(toRet->floorHeight * sizeof(float));
+            if(toRet->heightMap[i] == NULL){
+                fprintf(stderr, "ERROR: Height map for column %d could not be allocated! Aborting!", i);
+                // Attempt cleanup!
+                while(i>=0){
+                    free(toRet->heightMap[--i]);
+                }
+                free(toRet->heightMap);
+                free(toRet);
+                return NULL;
+            }
+        }
     }
 
     // Init floorplan
@@ -152,8 +171,19 @@ void genOutdoors(struct floor* maze){
     if(DEBUG==0)
         printf("Generating outdoor world...\n");
 
+    int x, y;
+    
     // Set that this is an outdoor map
     maze->isOutdoors = true;
+    
+    // Begin iterating over the heightmap
+    for(y = 0; y < maze->floorHeight; y++){
+        for(x = 0; x < maze->floorWidth; x++){
+            // Get a float value for this coordinate
+            maze->heightMap[x][y] = perlin2d((float)x, (float)y, 0.4, 10);
+        }
+    }
+
     return;
 }
 
@@ -528,6 +558,12 @@ void printMaze(struct floor* maze){
 
 void freeMaze(struct floor* maze){
     int x;
+    if(maze->isOutdoors){
+        for(x = 0; x < maze->floorWidth; x++){
+            free(maze->heightMap[x]);
+        }
+        free(maze->heightMap);
+    }
     for(x = 0; x < maze->floorWidth; x++){
         free(maze->floorData[x]);
         free(maze->floorEntities[x]);

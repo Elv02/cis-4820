@@ -48,8 +48,8 @@
 # on your distribution.
 LIBS = -lGL -lGLU -lglut -lm -D__LINUX__
 
-a2: a2.c graphics.c visible.c graphics.h
-	gcc a2.c maze.c graphics.c visible.c -o a2 $(LIBS)
+a2: a2.c graphics.c visible.c 
+	gcc a2.c maze.c perlin.c graphics.c visible.c -g -o a2 $(LIBS)
 
 clean:
 	rm a2

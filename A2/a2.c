@@ -333,13 +333,84 @@ void mouse(int button, int state, int x, int y) {
    printf("%d %d\n", x, y);
 }
 
+/*
+ * Create the world at a given floor number
+ */
+void buildFloor(int floorNum){
+   /* Data struct containing all information for a single floor in the dungeon */
+   struct floor* dungeonFloor; 
 
+   int i, x, y;
+   int ceilHeight;
+   int drawHeight = 25; // World draw height
+   // Disable fleight 
+   flycontrol = 0;
+   // First generate the world
+   dungeonFloor = initMaze(100, 100, false);
+   if(DEBUG==0){
+      printf("Retrieved world of size: %d %d\n", dungeonFloor->floorWidth, dungeonFloor->floorHeight);
+      printMaze(dungeonFloor);
+   }
+   // Next build the world data
+   for(y = 0; y < dungeonFloor->floorHeight; y++){
+      for(x = 0; x < dungeonFloor->floorWidth; x++){
+         ceilHeight = getCeilHeight(dungeonFloor, x, y);
+         // Floor tile 1
+         if(dungeonFloor->floorData[x][y]=='.'){
+            world[x][drawHeight][y] = 2;
+            world[x][drawHeight+ceilHeight+1][y] = 2;
+         }
+         // Floor tile 2
+         else if(dungeonFloor->floorData[x][y]==','){
+            world[x][drawHeight][y] = 6;
+            world[x][drawHeight+ceilHeight+1][y] = 2;
+         }
+         // Corridors
+         else if(dungeonFloor->floorData[x][y]=='+'){
+            world[x][drawHeight][y] = 3; // Corridor floor tile
+            world[x][drawHeight+ceilHeight+1][y] = 2;
+         }
+         // Walls
+         else if(dungeonFloor->floorData[x][y]=='#'){
+            for(i = 0; i <= ceilHeight + 1; i++){
+               world[x][drawHeight+i][y] = 1;
+            }
+         }
+         // Doors
+         else if(dungeonFloor->floorData[x][y]=='/'){
+            world[x][drawHeight][y] = 1; // Draw floor below the door
+            world[x][drawHeight+1][y] = 7; // Draw the door itself
+            world[x][drawHeight+2][y] = 7; // Draw the door itself
+            for(i = 3; i <= ceilHeight + 1; i++){
+               world[x][drawHeight+i][y] = 1;
+            }
+         }
+      }
+   }
+   // Next iterate over the entity list (For now just player placement & boxes)
+   for(y = 0; y < dungeonFloor->floorHeight; y++){
+      for(x = 0; x < dungeonFloor->floorWidth; x++){
+         // Player found! Setup at coordinates
+         if(dungeonFloor->floorEntities[x][y]=='@'){
+            if(DEBUG==0)
+               printf("Setting player 0 at (%d, %d, %d)...\n", x, drawHeight+1, y);
+            // TODO: Get rid of this static player template and update viewport start location
+            createPlayer(0, x, drawHeight+1, y, 0.0);
+            // Setup viewport
+            setViewPosition(-x - 0.5, -drawHeight - 2, -y - 0.5);
+            setViewOrientation(0, 0, 0);
+         // Box found!
+         } else if(dungeonFloor->floorEntities[x][y]=='B'){
+            world[x][drawHeight+1][y] = 8; // Draw a box
+         }
+      }
+   }
+   return;
+}
 
 int main(int argc, char** argv)
 {
    int i, j, k;
-   /* Data struct containing all information for a single floor in the dungeon */
-   struct floor* dungeonFloor; 
 	/* initialize the graphics system */
    graphicsInit(&argc, argv);
 
@@ -396,71 +467,7 @@ int main(int argc, char** argv)
    } else {
 
 	/* your code to build the world goes here */
-      int x, y;
-      int ceilHeight;
-      int drawHeight = 25; // World draw height
-      // Disable fleight 
-      flycontrol = 0;
-      // First generate the world
-      dungeonFloor = initMaze(100, 100, false);
-      if(DEBUG==0){
-         printf("Retrieved world of size: %d %d\n", dungeonFloor->floorWidth, dungeonFloor->floorHeight);
-         printMaze(dungeonFloor);
-      }
-      // Next build the world data
-      for(y = 0; y < dungeonFloor->floorHeight; y++){
-         for(x = 0; x < dungeonFloor->floorWidth; x++){
-            ceilHeight = getCeilHeight(dungeonFloor, x, y);
-            // Floor tile 1
-            if(dungeonFloor->floorData[x][y]=='.'){
-               world[x][drawHeight][y] = 2;
-               world[x][drawHeight+ceilHeight+1][y] = 2;
-            }
-            // Floor tile 2
-            else if(dungeonFloor->floorData[x][y]==','){
-               world[x][drawHeight][y] = 6;
-               world[x][drawHeight+ceilHeight+1][y] = 2;
-            }
-            // Corridors
-            else if(dungeonFloor->floorData[x][y]=='+'){
-               world[x][drawHeight][y] = 3; // Corridor floor tile
-               world[x][drawHeight+ceilHeight+1][y] = 2;
-            }
-            // Walls
-            else if(dungeonFloor->floorData[x][y]=='#'){
-               for(i = 0; i <= ceilHeight + 1; i++){
-                  world[x][drawHeight+i][y] = 1;
-               }
-            }
-            // Doors
-            else if(dungeonFloor->floorData[x][y]=='/'){
-               world[x][drawHeight][y] = 1; // Draw floor below the door
-               world[x][drawHeight+1][y] = 7; // Draw the door itself
-               world[x][drawHeight+2][y] = 7; // Draw the door itself
-               for(i = 3; i <= ceilHeight + 1; i++){
-                  world[x][drawHeight+i][y] = 1;
-               }
-            }
-         }
-      }
-      // Next iterate over the entity list (For now just player placement & boxes)
-      for(y = 0; y < dungeonFloor->floorHeight; y++){
-         for(x = 0; x < dungeonFloor->floorWidth; x++){
-            // Player found! Setup at coordinates
-            if(dungeonFloor->floorEntities[x][y]=='@'){
-               if(DEBUG==0)
-                  printf("Setting player 0 at (%d, %d, %d)...\n", x, drawHeight+1, y);
-               // TODO: Get rid of this static player template and update viewport start location
-               createPlayer(0, x, drawHeight+1, y, 0.0);
-               // Setup viewport
-               setViewPosition(-x - 0.5, -drawHeight - 2, -y - 0.5);
-               setViewOrientation(0, 0, 0);
-            // Box found!
-            } else if(dungeonFloor->floorEntities[x][y]=='B'){
-               world[x][drawHeight+1][y] = 8; // Draw a box
-            }
-         }
-      }
+      buildFloor(0);
    }
 
 
@@ -468,8 +475,8 @@ int main(int argc, char** argv)
 	/* code after this will not run until the program exits */
    glutMainLoop();
 
-   // Cleanup
-   freeMaze(dungeonFloor);
+   // Cleanup (TODO: REVISE INTO CLEANING STACK)
+   // freeMaze(dungeonFloor);
    return 0; 
 }
 

@@ -53,6 +53,8 @@ struct floor {
     int floorWidth;
     int floorHeight;
 
+    // 2D Float array holding heightmap data for the outside level
+    float** heightMap;
     // 'Cell' dividers (room zones)
     int hd1, hd2, vd1, vd2;
     // 2D Char array containing all data for this floorplan (geometry)
