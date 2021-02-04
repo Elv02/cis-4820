@@ -346,17 +346,19 @@ void collisionResponse() {
          // Bail
          return; 
       } else if(world[(int)x][(int)(y-1)][(int)z] == 5){
-         if(DEBUG == 0){
-            printf("Going upstairs!\n");
+         if(!levelStack.floors[levelStack.currentFloor]->isOutdoors){
+            if(DEBUG == 0){
+               printf("Going upstairs!\n");
+            }
+            // Save player location
+            levelStack.floors[levelStack.currentFloor]->floorEntities[(int)x + 1][(int)z] = '@';
+            // Wipe array
+            wipeWorld();
+            // Loadup next floor
+            buildFloor(levelStack.currentFloor - 1);  
+            // Bail
+            return; 
          }
-         // Save player location
-         levelStack.floors[levelStack.currentFloor]->floorEntities[(int)x + 1][(int)z] = '@';
-         // Wipe array
-         wipeWorld();
-         // Loadup next floor
-         buildFloor(levelStack.currentFloor - 1);  
-         // Bail
-         return; 
       }
       setViewPosition(-x, -(floor(y)+1), -z);
    }

@@ -185,7 +185,7 @@ void genOutdoors(struct floor* maze){
     for(y = 0; y < maze->floorHeight; y++){
         for(x = 0; x < maze->floorWidth; x++){
             // Get a float value for this coordinate
-            maze->heightMap[x][y] = perlin2d((float)x, (float)y, 0.1, 25);
+            maze->heightMap[x][y] = perlin2d((float)x, (float)y, 0.1, 1);
         }
     }
 
