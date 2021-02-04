@@ -16,7 +16,8 @@ while in the directory containing 'makefile'.  This will generate an
 executable called 'a1'.
 
 IMPORTANT NOTE: If using another Makefile that is not the provided one,
-you *must* be sure to include the maze.c file when running gcc!
+you *must* be sure to include the maze.c in addition to the a1.c, graphics.c
+and visible.c files when running gcc!
 
 | Execution Instructions |
 |========================|   

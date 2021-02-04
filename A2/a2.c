@@ -9,15 +9,24 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <math.h>
 
 #include "graphics.h"
 #include "maze.h"
+#include "perlin.h"
 
 extern GLubyte world[WORLDX][WORLDY][WORLDZ];
 
    /* Collection of floors for holding world data */
 static struct floor_stack levelStack;
+
+   /* x y coordinates offset for cloud moving */
+static int xCloudOffset, yCloudOffset;
+   /*  Draw height for clouds */
+static int cloudHeight = 49; 
+   /* Time when last cloud update was done */
+static int cloudTime = 0;
 
 	/* mouse function called by GLUT when a button is pressed or released */
 void mouse(int, int, int, int);
@@ -100,6 +109,47 @@ extern void getUserColour(int, GLfloat *, GLfloat *, GLfloat *, GLfloat *,
 /********* end of extern variable declarations **************/
 
 /*
+ * Wipe the cloud layer only
+ */
+
+void wipeClouds(){
+   int x, z;
+   for(x = 0; x < 100; x++){
+      for(z = 0; z < 100; z++){
+         world[x][cloudHeight][z] = 0;
+      }
+   }
+   return;
+}
+
+/*
+ * Animate clouds for a given tick
+ */
+void animateClouds(){
+   // Check if it's time to move the clouds
+   if(cloudTime == (unsigned)time(NULL)){
+      return; // Bail
+   }
+   int x, y;
+   // Update cloud offset
+   xCloudOffset++;
+   yCloudOffset++;
+   // Wipe the old clouds
+   wipeClouds();
+   // Draw the new ones
+   for(int y = 0; y < 100; y++){
+      for(int x = 0; x < 100; x++){
+         float val = perlin2d((float)(x + xCloudOffset), (float)(y + yCloudOffset), 0.1, 1);
+         if(val > 0.75){
+            world[x][cloudHeight][y] = 10;
+         }
+      }
+   }
+   cloudTime = (unsigned)time(NULL);
+   return;
+}
+
+/*
  * If an outdoor level is loaded, this will get the height at a given x y coordinate
  */
 int getHeight(int x, int y){
@@ -163,7 +213,7 @@ void buildFloor(int floorNum){
 
    // Check if we're outdoors
    if(dungeonFloor->isOutdoors){
-      int maxHeight = 24; // Maximum height for the terrain
+      int maxHeight = 22; // Maximum height for the terrain
       int snowHeight = 16; // Snow occurs at 16 above base
       int grassHeight = 8; // Grass occurs at 8 above base
 
@@ -549,6 +599,8 @@ createTube(2, -xx, -yy, -zz, -xx-((x-xx)*25.0), -yy-((y-yy)*25.0), -zz-((z-zz)*2
       // Perform a collision check
       collisionResponse();
 
+      // Animate clouds
+      animateClouds();
    }
 }
 
@@ -634,8 +686,13 @@ int main(int argc, char** argv)
    } else {
 
 	/* your code to build the world goes here */
+      // Setup clouds
+      xCloudOffset = 0;
+      yCloudOffset = 0;
       // Register a gray colour for the downstairs block
       setUserColour(9, 0.2, 0.2, 0.2, 1.0, 0.6, 0.6, 0.6, 1.0);
+      // Register color for clouds
+      setUserColour(10, 0.7, 0.7, 0.7, 1.0, 0.95, 0.95, 0.95, 1.0);
       // Load up level 0 to start
       levelStack.currentFloor = 0;
       levelStack.maxFloors = 0;
