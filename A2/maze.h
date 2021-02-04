@@ -52,6 +52,10 @@ struct floor {
     // floor size
     int floorWidth;
     int floorHeight;
+    // 3D Stair position for outdoor level
+    int sx, sy, sz;
+    // 3D position for player controller for outdoor level
+    int px, py, pz;
 
     // 2D Float array holding heightmap data for the outside level
     float** heightMap;
@@ -63,6 +67,19 @@ struct floor {
     char** floorEntities;
     // 2D Struct array containing room data for this floor
     struct room** rooms;
+};
+
+/*
+ * Struct containing an array of floors (World)
+ */
+
+struct floor_stack {
+    // Current floor (index)
+    int currentFloor;
+    // Maximum amount of floors allocated so far (Array size)
+    int maxFloors;
+    // Array of floors
+    struct floor** floors;
 };
 
 /*

@@ -40,7 +40,7 @@ struct floor* initMaze(int floorWidth, int floorHeight, bool isOutdoors){
         return NULL;
     }
 
-    // Init heightmap
+    // Init heightmap if outdoor level
     if(isOutdoors){
         for(i = 0; i < toRet->floorWidth; i++){
             toRet->heightMap[i] = (float*)malloc(toRet->floorHeight * sizeof(float));
@@ -55,6 +55,8 @@ struct floor* initMaze(int floorWidth, int floorHeight, bool isOutdoors){
                 return NULL;
             }
         }
+        genOutdoors(toRet);
+        return toRet;
     }
 
     // Init floorplan
@@ -110,13 +112,10 @@ struct floor* initMaze(int floorWidth, int floorHeight, bool isOutdoors){
         }
     }
 
-    // Check if we are generating the ground floor of the game (Outside)
-    if(isOutdoors){
-        genOutdoors(toRet);
-    } else {
-        // Populate floor data
-        genMaze(toRet);
-    }
+    
+    // Populate floor data
+    genMaze(toRet);
+    
 
     // Job's done
     return toRet;
@@ -172,15 +171,21 @@ void genOutdoors(struct floor* maze){
         printf("Generating outdoor world...\n");
 
     int x, y;
-    
+
+    // Seed the random number generator
+    srand(time(NULL));
     // Set that this is an outdoor map
     maze->isOutdoors = true;
+    // Flag stairs as not placed
+    maze->sx = -1;
+    // Seed the perlin noise generator
+    SEED = randRange(0, 4096);
     
     // Begin iterating over the heightmap
     for(y = 0; y < maze->floorHeight; y++){
         for(x = 0; x < maze->floorWidth; x++){
             // Get a float value for this coordinate
-            maze->heightMap[x][y] = perlin2d((float)x, (float)y, 0.4, 10);
+            maze->heightMap[x][y] = perlin2d((float)x, (float)y, 0.1, 25);
         }
     }
 
@@ -515,12 +520,28 @@ void populateFloor(struct floor* maze){
     int numBoxes; // Number of boxes to spawn in a given room
     int x, y;
 
-    // Pick a player spawn position (Choose room and random spot in room)
-    x = randRange(0, 2);
-    y = randRange(0, 2);
-    pen.x = randRange(maze->rooms[x][y].origin.x + 1, maze->rooms[x][y].corner.x - 1);
-    pen.y = randRange(maze->rooms[x][y].origin.y + 1, maze->rooms[x][y].corner.y - 1);
-    maze->floorEntities[pen.x][pen.y] = '@';
+    // Pick 2 random rooms for up and down staircases
+    while(true){
+        x = randRange(0, 2);
+        y = randRange(0, 2);
+        pen.x = randRange(maze->rooms[x][y].origin.x + 2, maze->rooms[x][y].corner.x - 2);
+        pen.y = randRange(maze->rooms[x][y].origin.y + 2, maze->rooms[x][y].corner.y - 2);
+        if(maze->floorEntities[pen.x][pen.y]==' ' && !isBlockingDoor(maze, pen.x, pen.y)){
+            maze->floorEntities[pen.x][pen.y] = 'U'; // Upstairs
+            maze->floorEntities[pen.x+1][pen.y] = '@'; // Player
+            break;
+        }
+    }
+    while(true){
+        x = randRange(0, 2);
+        y = randRange(0, 2);
+        pen.x = randRange(maze->rooms[x][y].origin.x + 2, maze->rooms[x][y].corner.x - 2);
+        pen.y = randRange(maze->rooms[x][y].origin.y + 2, maze->rooms[x][y].corner.y - 2);
+        if(maze->floorEntities[pen.x][pen.y]==' ' && !isBlockingDoor(maze, pen.x, pen.y)){
+            maze->floorEntities[pen.x][pen.y] = 'D'; // Downstairs
+            break;
+        }
+    }
 
     // Toss some random boxes into each room
     for(y = 0; y < 3; y++){
