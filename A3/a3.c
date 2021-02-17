@@ -12,8 +12,20 @@
 #include <math.h>
 
 #include "graphics.h"
+#include "maze.h"
+#include "perlin.h"
 
 extern GLubyte  world[WORLDX][WORLDY][WORLDZ];
+
+   /* Collection of floors for holding world data */
+static struct floor_stack levelStack;
+
+   /* x y coordinates offset for cloud moving */
+static float xCloudOffset, yCloudOffset;
+   /*  Draw height for clouds */
+static int cloudHeight = 49; 
+   /* Time since last game tick */
+static int oldTime = 0;
 
 	/* mouse function called by GLUT when a button is pressed or released */
 void mouse(int, int, int, int);
@@ -110,6 +122,224 @@ extern void hideMesh(int);
 
 /********* end of extern variable declarations **************/
 
+/*
+ * Wipe the cloud layer only
+ */
+
+void wipeClouds(){
+   int x, z;
+   for(x = 0; x < 100; x++){
+      for(z = 0; z < 100; z++){
+         world[x][cloudHeight][z] = 0;
+      }
+   }
+   return;
+}
+
+/*
+ * Animate clouds for a given tick
+ */
+void animateClouds(int delta){
+   int x, y;
+   // Update cloud offset
+   xCloudOffset+= 10.0/2500.0 * delta;
+   yCloudOffset+= 10.0/2500.0 * delta;
+   // Wipe the old clouds
+   wipeClouds();
+   // Draw the new ones
+   for(int y = 0; y < 100; y++){
+      for(int x = 0; x < 100; x++){
+         float val = perlin2d((float)(x + xCloudOffset), (float)(y + yCloudOffset), 0.1, 1);
+         if(val > 0.75){
+            world[x][cloudHeight][y] = 10;
+         }
+      }
+   }
+   return;
+}
+
+/*
+ * If an outdoor level is loaded, this will get the height at a given x y coordinate
+ */
+int getHeight(int x, int y){
+   int i;
+   for(i = 25; i < 50; i++){
+      if(world[x][i][y] == 0){
+         return i - 1;
+      }
+   }
+   return 0; // PROBLEM!
+}
+
+/*
+ * Clear the world array so it can be repainted
+ */
+void wipeWorld(){
+   int x, y, z;
+   for(x = 0; x < 100; x++){
+      for(y = 0; y < 50; y++){
+         for(z = 0; z < 100; z++){
+            world[x][y][z] = 0;
+         }
+      }
+   }
+   return;
+}
+
+/*
+ * Render the world at a given floor number
+ */
+void buildFloor(int floorNum){
+   /* Data struct containing all information for a single floor in the dungeon */
+   struct floor* dungeonFloor; 
+
+   int i, x, y;
+   int ceilHeight;
+   int drawHeight = 25; // World draw height (starting)
+   // Disable fleight 
+   flycontrol = 0;
+
+   // Check if we are hitting a new floor
+   if(levelStack.maxFloors < floorNum + 1){
+      levelStack.maxFloors++;
+      levelStack.floors = realloc(levelStack.floors, sizeof(struct floor*) * levelStack.maxFloors);
+      if(floorNum == 0){
+         levelStack.floors[floorNum] = initMaze(100, 100, true);
+      } else {
+         levelStack.floors[floorNum] = initMaze(100, 100, false);
+      }
+   } 
+   levelStack.currentFloor = floorNum;
+
+   // Grab reference to the current floor
+   dungeonFloor = levelStack.floors[floorNum];
+
+   if(DEBUG==0 && !dungeonFloor->isOutdoors){
+      printf("Retrieved world of size: %d %d\n", dungeonFloor->floorWidth, dungeonFloor->floorHeight);
+      printMaze(dungeonFloor);
+   }
+   // Next build the world data
+
+   // Check if we're outdoors
+   if(dungeonFloor->isOutdoors){
+      int maxHeight = 22; // Maximum height for the terrain
+      int snowHeight = 16; // Snow occurs at 16 above base
+      int grassHeight = 8; // Grass occurs at 8 above base
+
+      for(y = 0; y < dungeonFloor->floorHeight; y++){
+         for(x = 0; x < dungeonFloor->floorWidth; x++){
+            // Get the height map at this coordinate
+            int yCap = drawHeight + floor(((dungeonFloor->heightMap[x][y])*maxHeight));
+            // Draw from the top to the bottom, picking the appropriate colour as we go
+            for(i = yCap; i >= drawHeight; i--){
+               if(i >= snowHeight + drawHeight){
+                  world[x][i][y] = 5;
+               } else if(i >= grassHeight + drawHeight && i < snowHeight + drawHeight){
+                  world[x][i][y] = 1;
+               } else if(i < grassHeight + drawHeight){
+                  world[x][i][y] = 7;
+               }
+            }
+         }
+      }
+
+      // Randomly place the stairs and player somewhere in the middle of the map if they haven't been
+      while(dungeonFloor->sx == -1){
+         // Pick a random spot
+         x = randRange(20, 80);
+         y = randRange(20, 80);
+         // Get height
+         int h = getHeight(x, y);
+
+         // Make sure the stairs are placed in a dirt covered area (Contrast)
+         if(h <= grassHeight + drawHeight){
+               // Get coordinates for stairs
+               dungeonFloor->sx = x;
+               dungeonFloor->sy = h + 1;
+               dungeonFloor->sz = y;
+               // Get coordinates for player
+               dungeonFloor->px = randRange(x - 5, x + 5);
+               dungeonFloor->pz = randRange(y - 5, y + 5);
+               dungeonFloor->py = getHeight(dungeonFloor->px, dungeonFloor->pz) + 1;
+         }
+      }
+      // Put the player and stairs in
+      setViewPosition(-dungeonFloor->px - 0.5, -dungeonFloor->py - 2, -dungeonFloor->pz - 0.5);
+      setViewOrientation(0, 0, 0);
+      world[dungeonFloor->sx][dungeonFloor->sy][dungeonFloor->sz] = 9;
+
+   // Otherwise we're indoors, generate the rooms etc
+   } else {
+      for(y = 0; y < dungeonFloor->floorHeight; y++){
+         for(x = 0; x < dungeonFloor->floorWidth; x++){
+            ceilHeight = getCeilHeight(dungeonFloor, x, y);
+            // Floor tile 1
+            if(dungeonFloor->floorData[x][y]=='.'){
+               world[x][drawHeight][y] = 2;
+               world[x][drawHeight+ceilHeight+1][y] = 2;
+            }
+            // Floor tile 2
+            else if(dungeonFloor->floorData[x][y]==','){
+               world[x][drawHeight][y] = 6;
+               world[x][drawHeight+ceilHeight+1][y] = 2;
+            }
+            // Corridors
+            else if(dungeonFloor->floorData[x][y]=='+'){
+               world[x][drawHeight][y] = 3; // Corridor floor tile
+               world[x][drawHeight+ceilHeight+1][y] = 2;
+            }
+            // Walls
+            else if(dungeonFloor->floorData[x][y]=='#'){
+               for(i = 0; i <= ceilHeight + 1; i++){
+                  world[x][drawHeight+i][y] = 1;
+               }
+            }
+            // Doors
+            else if(dungeonFloor->floorData[x][y]=='/'){
+               world[x][drawHeight][y] = 1; // Draw floor below the door
+               world[x][drawHeight+1][y] = 7; // Draw the door itself
+               world[x][drawHeight+2][y] = 7; // Draw the door itself
+               for(i = 3; i <= ceilHeight + 1; i++){
+                  world[x][drawHeight+i][y] = 1;
+               }
+            }
+            // Open Doors
+            else if(dungeonFloor->floorData[x][y]=='|'){
+               world[x][drawHeight][y] = 1; // Draw floor below the door
+               world[x][drawHeight+1][y] = 0; // Draw the open door
+               world[x][drawHeight+2][y] = 0; // Draw the open door
+               for(i = 3; i <= ceilHeight + 1; i++){
+                  world[x][drawHeight+i][y] = 1;
+               }
+            }
+         }
+      }
+      // Next iterate over the entity list (For now just player placement & boxes)
+      for(y = 0; y < dungeonFloor->floorHeight; y++){
+         for(x = 0; x < dungeonFloor->floorWidth; x++){
+            // Player found! Setup at coordinates
+            if(dungeonFloor->floorEntities[x][y]=='@'){
+               if(DEBUG==0)
+                  printf("Setting player 0 at (%d, %d, %d)...\n", x, drawHeight+1, y);
+               // Setup viewport
+               setOldViewPosition(-x - 0.5, -drawHeight - 2, -y - 0.5);
+               setViewPosition(-x - 0.5, -drawHeight - 2, -y - 0.5);
+               setViewOrientation(0, 0, 0);
+               // Wipe player reference point so it can be saved when they move to a different staircase
+               dungeonFloor->floorEntities[x][y] = ' ';
+            // Box found!
+            } else if(dungeonFloor->floorEntities[x][y]=='B'){
+               world[x][drawHeight+1][y] = 8; // Draw a box
+            } else if(dungeonFloor->floorEntities[x][y]=='U'){
+               world[x][drawHeight+1][y] = 5; // Draw a upward staircase
+            } else if(dungeonFloor->floorEntities[x][y]=='D'){
+               world[x][drawHeight+1][y] = 9; // Draw a downward staircase
+            }
+         }
+      }
+   }
+   return;
+}
 
 	/*** collisionResponse() ***/
 	/* -performs collision detection and response */
@@ -121,6 +351,121 @@ void collisionResponse() {
 
 	/* your code for collisions goes here */
 
+   // Get what we are about to hit
+   int hit;
+   // Current viewpoint coords
+   float x, y, z;
+   // Old viewpoint coords
+   float oX, oY, oZ;
+   // New viewport coords (extrapolate where we're heading)
+   float nX, nY, nZ;
+
+   // Populate our coord values
+   getViewPosition(&x, &y, &z);
+   getOldViewPosition(&oX, &oY, &oZ);
+   
+   // Invert values to make calculations easier
+   x = -x;
+   y = -y;
+   z = -z;
+   oX = -oX;
+   oY = -oY;
+   oZ = -oZ;
+
+   // Calculate our predicted position if we keep going this way
+   nX = x + 2*(x - oX);
+   nY = y + 2*(y - oY);
+   nZ = z + 2*(z - oZ);
+
+   // Perform collision check at the predicted space
+   hit = world[(int)nX][(int)nY][(int)nZ];
+
+   // Set consistent floor position if standing on solid ground
+   if(world[(int)x][(int)(y-1)][(int)z] != 0){
+      // Check for stairs
+      if(world[(int)x][(int)(y-1)][(int)z] == 9){
+         if(DEBUG == 0){
+            printf("Going downstairs!\n");
+         }
+         // Save player position
+         if(levelStack.floors[levelStack.currentFloor]->isOutdoors){
+            // Save player location as being north of the stairs
+            levelStack.floors[levelStack.currentFloor]->px = x + 1;
+            levelStack.floors[levelStack.currentFloor]->py = getHeight((int)(x + 1), (int)z);
+            levelStack.floors[levelStack.currentFloor]->pz = z;
+            
+         // We're indoors, just use entity array to save position
+         } else {
+            // TODO: Check for a valid space around the staircase to store player location
+            levelStack.floors[levelStack.currentFloor]->floorEntities[(int)x + 1][(int)z] = '@';
+         }
+         // Wipe array
+         wipeWorld();
+         // Loadup next floor
+         buildFloor(levelStack.currentFloor + 1); 
+         // Bail
+         return; 
+      } else if(world[(int)x][(int)(y-1)][(int)z] == 5){
+         if(!levelStack.floors[levelStack.currentFloor]->isOutdoors){
+            if(DEBUG == 0){
+               printf("Going upstairs!\n");
+            }
+            // Save player location
+            levelStack.floors[levelStack.currentFloor]->floorEntities[(int)x + 1][(int)z] = '@';
+            // Wipe array
+            wipeWorld();
+            // Loadup next floor
+            buildFloor(levelStack.currentFloor - 1);  
+            // Bail
+            return; 
+         }
+      }
+      setViewPosition(-x, -(floor(y)+1), -z);
+   }
+
+   // Collision!
+   if(hit != 0){
+      // Check if we're indoors or outdoors for collision logic
+      if(levelStack.floors[levelStack.currentFloor]->isOutdoors){
+         // Perform climb check
+         if(world[(int)nX][(int)nY][(int)nZ] == 0){
+            // Climb the box
+            setViewPosition(-nX, -nY - 1, -nZ);
+         // Perform floor check
+         } else {
+            // Revert our position back to the old position
+            setViewPosition(-oX, -oY, -oZ);
+         }
+      } else {
+         if(hit == 7){
+            // Mark door as opened in world data
+            levelStack.floors[levelStack.currentFloor]->floorData[(int)nX][(int)nZ] = '|';
+            // Open this door block
+            world[(int)nX][(int)nY][(int)nZ] = 0;
+            // Open the door block above or below this one
+            if(world[(int)nX][(int)nY - 1][(int)nZ] == 7) {
+               world[(int)nX][(int)nY - 1][(int)nZ] = 0;
+            } else {
+               world[(int)nX][(int)nY + 1][(int)nZ] = 0;
+            }
+         // We hit a solid block
+         } else {
+            // Perform climb check
+            if(world[(int)nX][(int)nY + 1][(int)nZ] == 0){
+               // Climb the box
+               setViewPosition(-nX, -nY - 1, -nZ);
+            // Perform floor check
+            } else {
+               // Revert our position back to the old position
+               setViewPosition(-oX, -oY, -oZ);
+            }
+         }
+      }
+      // General collision logic goes here
+      // We hit a door, open it
+       
+   }
+   return;
 }
 
 
@@ -271,7 +616,26 @@ float x, y, z;
    } else {
 
 	/* your code goes here */
+      // Get time since last update
+      int startTime = glutGet(GLUT_ELAPSED_TIME);
+      int delta = startTime - oldTime;
+      oldTime = startTime;
 
+      // Get old position data
+      getViewPosition(&x, &y, &z);
+      setOldViewPosition(x,y,z);
+
+      // Apply gravity
+      y += 0.1;
+
+      // Update view position
+      setViewPosition(x, y, z);
+
+      // Perform a collision check
+      collisionResponse();
+
+      // Animate clouds
+      animateClouds(delta);
    }
 }
 
@@ -446,7 +810,17 @@ int i, j, k;
    } else {
 
 	/* your code to build the world goes here */
-
+      // Setup clouds
+      xCloudOffset = 0;
+      yCloudOffset = 0;
+      // Register a gray colour for the downstairs block
+      setUserColour(9, 0.2, 0.2, 0.2, 1.0, 0.6, 0.6, 0.6, 1.0);
+      // Register color for clouds
+      setUserColour(10, 0.7, 0.7, 0.7, 1.0, 0.95, 0.95, 0.95, 1.0);
+      // Load up level 0 to start
+      levelStack.currentFloor = 0;
+      levelStack.maxFloors = 0;
+      buildFloor(levelStack.currentFloor);
    }
 
 
