@@ -38,7 +38,7 @@
 
 # Recent MACOS
 # frameworks for newer MACOS, where include files are moved 
-#LIBS = -F/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/ -framework OpenGL -framework GLUT -lm -Wno-deprecated-declarations
+LIBS = -F/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/ -framework OpenGL -framework GLUT -lm -Wno-deprecated-declarations
 
 # Old MACOS
 # framework information for older version of MACOS
@@ -46,11 +46,10 @@
 
 # LINUX - Note that these will probably work but they can differ depending
 # on your distribution.
-LIBS = -lGL -lGLU -lglut -lm -D__LINUX__
+#LIBS = -lGL -lGLU -lglut -lm -D__LINUX__
 
-a1: a2.c graphics.c visible.c 
-	gcc a2.c maze.c perlin.c graphics.c visible.c -g -o a1 $(LIBS)
 
-clean:
-	rm a1
+a1: a1.c graphics.c visible.c mesh.c graphics.h mesh.h fast_obj.h
+	gcc a1.c graphics.c visible.c mesh.c  -o a1 $(LIBS) 
+
 

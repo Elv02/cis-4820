@@ -1,0 +1,42 @@
+|========================|
+| Warren Hoeft (0872179) |
+|  CIS 4820 Assignment 2 |
+|       02/03/2020       |
+|========================|
+
+
+| Compilation Instructions |
+|==========================|
+
+The provided makefile is setup for Linux Libraries by default. The
+path for MACOS are also provided but is commented out.
+
+To compile the program use the makefile by executing the 'make' command
+while in the directory containing 'makefile'.  This will generate an 
+executable called 'a1'.
+
+IMPORTANT NOTE: If using another Makefile that is not the provided one,
+you *must* be sure to include the maze.c and perlin.c in addition to the a1.c,
+graphics.c and visible.c files when running gcc!
+
+| Execution Instructions |
+|========================|   
+
+To run the program use '/a2'.  Optionally you may use the '-help' flag
+to see a list of available commands.
+
+| Important Implementation Notes |
+|================================|
+
+1) The player will always spawn above ground within 5 blocks of the stairs block leading
+into the dungeon.
+
+2) The bonus feature of being able to go through doors is still in this version.
+I even track which doors have been opened between floor changes.
+
+3) Even though the outline only specified one above ground level and one underground level,
+I have implemented a stack-based system for generating/storing floors of the game.  In theory you can
+go very, very far down.
+
+4) I was unsure if stairs were supposed to be 'flush' with the ground, so I opted to make them pop above ground like
+boxes to make them easier to find.
