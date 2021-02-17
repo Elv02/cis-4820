@@ -14,6 +14,7 @@
 #include "graphics.h"
 #include "maze.h"
 #include "perlin.h"
+#include "textures.h"
 
 extern GLubyte  world[WORLDX][WORLDY][WORLDZ];
 
@@ -233,11 +234,11 @@ void buildFloor(int floorNum){
             // Draw from the top to the bottom, picking the appropriate colour as we go
             for(i = yCap; i >= drawHeight; i--){
                if(i >= snowHeight + drawHeight){
-                  world[x][i][y] = 5;
+                  world[x][i][y] = SNOW_ID;
                } else if(i >= grassHeight + drawHeight && i < snowHeight + drawHeight){
-                  world[x][i][y] = 1;
+                  world[x][i][y] = GRASS_ID; 
                } else if(i < grassHeight + drawHeight){
-                  world[x][i][y] = 7;
+                  world[x][i][y] = DIRT_ID;
                }
             }
          }
@@ -266,7 +267,7 @@ void buildFloor(int floorNum){
       // Put the player and stairs in
       setViewPosition(-dungeonFloor->px - 0.5, -dungeonFloor->py - 2, -dungeonFloor->pz - 0.5);
       setViewOrientation(0, 0, 0);
-      world[dungeonFloor->sx][dungeonFloor->sy][dungeonFloor->sz] = 9;
+      world[dungeonFloor->sx][dungeonFloor->sy][dungeonFloor->sz] = DSTAIRS_ID;
 
    // Otherwise we're indoors, generate the rooms etc
    } else {
@@ -275,41 +276,43 @@ void buildFloor(int floorNum){
             ceilHeight = getCeilHeight(dungeonFloor, x, y);
             // Floor tile 1
             if(dungeonFloor->floorData[x][y]=='.'){
-               world[x][drawHeight][y] = 2;
-               world[x][drawHeight+ceilHeight+1][y] = 2;
+               world[x][drawHeight][y] = TILE1_ID;
+               world[x][drawHeight+ceilHeight+1][y] = CEIL_ID;
             }
             // Floor tile 2
             else if(dungeonFloor->floorData[x][y]==','){
-               world[x][drawHeight][y] = 6;
-               world[x][drawHeight+ceilHeight+1][y] = 2;
+               world[x][drawHeight][y] = TILE2_ID;
+               world[x][drawHeight+ceilHeight+1][y] = CEIL_ID;
             }
             // Corridors
             else if(dungeonFloor->floorData[x][y]=='+'){
-               world[x][drawHeight][y] = 3; // Corridor floor tile
-               world[x][drawHeight+ceilHeight+1][y] = 2;
+               world[x][drawHeight][y] = CORR_FLR_ID; 
+               world[x][drawHeight+ceilHeight+1][y] = CORR_CEIL_ID;
             }
             // Walls
             else if(dungeonFloor->floorData[x][y]=='#'){
                for(i = 0; i <= ceilHeight + 1; i++){
-                  world[x][drawHeight+i][y] = 1;
+                  world[x][drawHeight+i][y] = WALL_ID;
                }
             }
             // Doors
             else if(dungeonFloor->floorData[x][y]=='/'){
-               world[x][drawHeight][y] = 1; // Draw floor below the door
-               world[x][drawHeight+1][y] = 7; // Draw the door itself
-               world[x][drawHeight+2][y] = 7; // Draw the door itself
-               for(i = 3; i <= ceilHeight + 1; i++){
-                  world[x][drawHeight+i][y] = 1;
+               world[x][drawHeight][y] = DOOR_FLR_ID; // Draw floor below the door
+               world[x][drawHeight+1][y] = DOOR_UP_ID; // Draw the door itself
+               world[x][drawHeight+2][y] = DOOR_LOW_ID; // Draw the door itself
+               world[x][drawHeight+3][y] = DOOR_DEC_ID; // Draw the art above the door 
+               for(i = 4; i <= ceilHeight + 1; i++){
+                  world[x][drawHeight+i][y] = WALL_ID;
                }
             }
             // Open Doors
             else if(dungeonFloor->floorData[x][y]=='|'){
-               world[x][drawHeight][y] = 1; // Draw floor below the door
+               world[x][drawHeight][y] = DOOR_FLR_ID; // Draw floor below the door
                world[x][drawHeight+1][y] = 0; // Draw the open door
                world[x][drawHeight+2][y] = 0; // Draw the open door
-               for(i = 3; i <= ceilHeight + 1; i++){
-                  world[x][drawHeight+i][y] = 1;
+               world[x][drawHeight+3][y] = DOOR_DEC_ID; // Draw the art above the door 
+               for(i = 4; i <= ceilHeight + 1; i++){
+                  world[x][drawHeight+i][y] = WALL_ID;
                }
             }
          }
@@ -329,11 +332,11 @@ void buildFloor(int floorNum){
                dungeonFloor->floorEntities[x][y] = ' ';
             // Box found!
             } else if(dungeonFloor->floorEntities[x][y]=='B'){
-               world[x][drawHeight+1][y] = 8; // Draw a box
+               world[x][drawHeight+1][y] = BOX_ID; // Draw a box
             } else if(dungeonFloor->floorEntities[x][y]=='U'){
-               world[x][drawHeight+1][y] = 5; // Draw a upward staircase
+               world[x][drawHeight+1][y] = USTAIRS_ID; // Draw a upward staircase
             } else if(dungeonFloor->floorEntities[x][y]=='D'){
-               world[x][drawHeight+1][y] = 9; // Draw a downward staircase
+               world[x][drawHeight+1][y] = DSTAIRS_ID; // Draw a downward staircase
             }
          }
       }
@@ -383,7 +386,7 @@ void collisionResponse() {
    // Set consistent floor position if standing on solid ground
    if(world[(int)x][(int)(y-1)][(int)z] != 0){
       // Check for stairs
-      if(world[(int)x][(int)(y-1)][(int)z] == 9){
+      if(world[(int)x][(int)(y-1)][(int)z] == DSTAIRS_ID){
          if(DEBUG == 0){
             printf("Going downstairs!\n");
          }
@@ -405,7 +408,7 @@ void collisionResponse() {
          buildFloor(levelStack.currentFloor + 1); 
          // Bail
          return; 
-      } else if(world[(int)x][(int)(y-1)][(int)z] == 5){
+      } else if(world[(int)x][(int)(y-1)][(int)z] == USTAIRS_ID){
          if(!levelStack.floors[levelStack.currentFloor]->isOutdoors){
             if(DEBUG == 0){
                printf("Going upstairs!\n");
@@ -437,13 +440,13 @@ void collisionResponse() {
             setViewPosition(-oX, -oY, -oZ);
          }
       } else {
-         if(hit == 7){
+         if(hit == DOOR_LOW_ID || hit == DOOR_UP_ID){
             // Mark door as opened in world data
             levelStack.floors[levelStack.currentFloor]->floorData[(int)nX][(int)nZ] = '|';
             // Open this door block
             world[(int)nX][(int)nY][(int)nZ] = 0;
             // Open the door block above or below this one
-            if(world[(int)nX][(int)nY - 1][(int)nZ] == 7) {
+            if(world[(int)nX][(int)nY - 1][(int)nZ] == DOOR_UP_ID) {
                world[(int)nX][(int)nY - 1][(int)nZ] = 0;
             } else {
                world[(int)nX][(int)nY + 1][(int)nZ] = 0;
@@ -634,8 +637,10 @@ float x, y, z;
       // Perform a collision check
       collisionResponse();
 
-      // Animate clouds
-      animateClouds(delta);
+      // Animate clouds if we're outside
+      if(levelStack.floors[levelStack.currentFloor]->isOutdoors){
+         animateClouds(delta);
+      }
    }
 }
 
@@ -813,10 +818,48 @@ int i, j, k;
       // Setup clouds
       xCloudOffset = 0;
       yCloudOffset = 0;
-      // Register a gray colour for the downstairs block
-      setUserColour(9, 0.2, 0.2, 0.2, 1.0, 0.6, 0.6, 0.6, 1.0);
-      // Register color for clouds
-      setUserColour(10, 0.7, 0.7, 0.7, 1.0, 0.95, 0.95, 0.95, 1.0);
+
+      /* Register all our custom colours and textures */
+      /* COLOURS */
+      setUserColour(DSTAIRS_ID, 0.2, 0.2, 0.2, 1.0, 0.6, 0.6, 0.6, 1.0);
+      setUserColour(CLOUD_ID, 0.7, 0.7, 0.7, 1.0, 0.95, 0.95, 0.95, 1.0);
+      setUserColour(GRASS_ID, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0); 
+      setUserColour(DIRT_ID, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+      setUserColour(SNOW_ID, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+      setUserColour(USTAIRS_ID, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+      setUserColour(TILE1_ID, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+      setUserColour(TILE2_ID, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+      setUserColour(CEIL_ID, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+      setUserColour(CORR_FLR_ID, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+      setUserColour(CORR_CEIL_ID, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+      setUserColour(WALL_ID, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+      setUserColour(DOOR_FLR_ID, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+      setUserColour(DOOR_LOW_ID, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+      setUserColour(DOOR_UP_ID, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+      setUserColour(DOOR_DEC_ID, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+      setUserColour(BOX_ID, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+      
+
+      /* TEXTURES */
+      setAssignedTexture(DSTAIRS_ID, DSTAIRS_TEX);
+      setAssignedTexture(GRASS_ID, GRASS_TEX); 
+      setAssignedTexture(CLOUD_ID, CLOUD_TEX);
+      setAssignedTexture(DIRT_ID, DIRT_TEX);
+      setAssignedTexture(SNOW_ID, SNOW_TEX);
+      setAssignedTexture(USTAIRS_ID, USTAIRS_TEX);
+      setAssignedTexture(TILE1_ID, TILE1_TEX);
+      setAssignedTexture(TILE2_ID, TILE2_TEX);
+      setAssignedTexture(CEIL_ID, CEIL_TEX);
+      setAssignedTexture(CORR_FLR_ID, CORR_FLR_TEX);
+      setAssignedTexture(CORR_CEIL_ID, CORR_CEIL_TEX);
+      setAssignedTexture(WALL_ID, WALL_TEX);
+      setAssignedTexture(DOOR_FLR_ID, DOOR_FLR_TEX);
+      setAssignedTexture(DOOR_LOW_ID, DOOR_LOW_TEX);
+      setAssignedTexture(DOOR_UP_ID, DOOR_UP_TEX);
+      setAssignedTexture(DOOR_DEC_ID, DOOR_DEC_TEX);
+      setAssignedTexture(BOX_ID, BOX_TEX);
+
+
       // Load up level 0 to start
       levelStack.currentFloor = 0;
       levelStack.maxFloors = 0;
