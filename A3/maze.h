@@ -17,6 +17,41 @@ struct position {
 enum hallway_direction{N_S, E_W, S_N, W_E};
 
 /*
+ * Travel state for mobs
+ */
+enum direction{NORTH, SOUTH, EAST, WEST, IDLE};
+
+/*
+ * Struct for storing basic entity data
+ */
+struct mob {
+    // Position of the mob on the world map
+    struct position location;
+    // Position the mob is moving towards
+    struct position next_location;
+    // Direction the mob is currently looking (Start north)
+    int facing;
+    // Track if mob is currently moving
+    bool is_moving;
+    // Track if the mob can currently be seen by the player
+    bool is_visible;
+    // Mob's symbol to draw onto the entity array
+    char symbol; 
+    // World coordinates for the mob
+    float worldX;
+    float worldY;
+    float worldZ;
+    // World coordinates for the next travel point
+    float destX;
+    float destY;
+    float destZ;
+    // World rotation for the mob
+    float rotX;
+    float rotY;
+    float rotZ;
+};
+
+/*
  * Struct for storing individual room related data
  */
 struct room {
@@ -41,6 +76,9 @@ struct room {
     int roomWidth;
     int roomHeight;
     int ceilHeight; // For the engine, how 'tall' this room is
+
+    // Room found
+    bool roomVisible;
 };
 
 /*
@@ -49,6 +87,8 @@ struct room {
 struct floor {
     // Track whether this is the outdoor level (Different render params)
     bool isOutdoors;
+    // Track how many mobs are on this floor (used for mob list allocation)
+    int mobCount;
     // floor size
     int floorWidth;
     int floorHeight;
@@ -65,6 +105,10 @@ struct floor {
     char** floorData;
     // 2D Char array containing all entity data for this floor (player position, enemy positions, loot locations, etc)
     char** floorEntities;
+    // 2D Int array which indicates if a given tile has been 'discovered' and can draw in a Fog of War map
+    int** isVisible;
+    // 1D Mob list containing references to all mobs on a given floor.
+    struct mob* mobs;
     // 2D Struct array containing room data for this floor
     struct room** rooms;
 };

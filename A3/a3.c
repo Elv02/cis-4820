@@ -15,6 +15,7 @@
 #include "maze.h"
 #include "perlin.h"
 #include "textures.h"
+#include "visible.h"
 
 extern GLubyte  world[WORLDX][WORLDY][WORLDZ];
 
@@ -27,6 +28,8 @@ static float xCloudOffset, yCloudOffset;
 static int cloudHeight = 49; 
    /* Time since last game tick */
 static int oldTime = 0;
+   /* Draw distance for entities */
+static float drawDist = 35.0;
 
 	/* mouse function called by GLUT when a button is pressed or released */
 void mouse(int, int, int, int);
@@ -122,11 +125,280 @@ extern void drawMesh(int);
 extern void hideMesh(int);
 
 /********* end of extern variable declarations **************/
+/*
+ * Linear Interpolation function
+ * Interpolates between v0 and v1 by t amount
+ */
+float lerp(float v0, float v1, float t) {
+   // Check if it's close enough to result that we can just return result
+   if(fabs(v0 - v1) <= 0.1){
+      return v1;
+   } else {
+      return v0 * (1.0 - t) + v1*t;
+   }
+}
+/*
+ * Check if a given space is 'empty'
+ */
+bool isEmpty(int x, int y){
+   char lvlCheck = levelStack.floors[levelStack.currentFloor]->floorData[x][y];
+   char entCheck = levelStack.floors[levelStack.currentFloor]->floorEntities[x][y];
+   if(lvlCheck == '#' || lvlCheck == '/'){
+      return false;
+   }
+   if(entCheck == 'M' || entCheck == 'B' || entCheck == 'U' || entCheck == 'D'){
+      return false;
+   }
+   return true;
+}
+/*
+ * Check if it's valid to move in a given direction
+ */
+bool isValidMove(int x, int y, int dir){
+   int nx, ny;
+   nx = x;
+   ny = y;
+   switch(dir){
+      case NORTH:
+         ny++;
+         break;
+      case SOUTH:
+         ny--;
+         break;
+      case EAST:
+         nx++;
+         break;
+      case WEST:
+         nx--;
+         break;
+   }
+   return isEmpty(nx, ny);
+}
+/*
+ * Process all updates for mobs
+ */
+void mobUpdate(int delta){
+   // Get a reference to the mob list
+   struct mob* list = levelStack.floors[levelStack.currentFloor]->mobs;
+   // Get size of list
+   int listSize = levelStack.floors[levelStack.currentFloor]->mobCount;
+   // Track current id
+   int id;
+   // Iterate over all mobs
+   for(id = 0; id < listSize; id++){
+      // Check if mob needs move instruction
+      if(!list[id].is_moving){
+         // Calculate a new direction, rotate mob, and update the destination coordinate
+         int new_dir = randRange(0, 3);
+         // TODO: Validate this move direction is correct
+         if(!isValidMove(list[id].location.x, list[id].location.y, new_dir)){
+            continue; // This mob doesn't move this tick
+         }
+         switch(list[id].facing){
+            case NORTH:
+               switch(new_dir){
+                  case NORTH:
+                     break; // Moving same as initial direction, do nothing
+                  case SOUTH:
+                     list[id].rotY -= 180;
+                     break; 
+                  case EAST:
+                     list[id].rotY += 90;
+                     break;
+                  case WEST:
+                     list[id].rotY -= 90;
+                     break;
+                  default:
+                     fprintf(stderr, "ERROR: Invalid new direction for mob %d: %d\n!", id, new_dir);
+                     break;
+               }
+               break;
+            case SOUTH:
+               switch(new_dir){
+                  case NORTH:
+                     list[id].rotY -= 180;
+                     break;
+                  case SOUTH: 
+                     break; // Moving same as initial direction, do nothing
+                  case EAST:
+                     list[id].rotY -= 90;
+                     break;
+                  case WEST:
+                     list[id].rotY += 90;
+                     break;
+                  default:
+                     fprintf(stderr, "ERROR: Invalid new direction for mob %d: %d\n!", id, new_dir);
+                     break;
+               }
+               break;
+            case EAST:
+               switch(new_dir){
+                  case NORTH:
+                     list[id].rotY -= 90;
+                     break;
+                  case SOUTH:
+                     list[id].rotY += 90;
+                     break;
+                  case EAST:
+                     break; // Moving same as initial direction, do nothing
+                  case WEST:
+                     list[id].rotY -= 180;
+                     break;
+                  default:
+                     fprintf(stderr, "ERROR: Invalid new direction for mob %d: %d\n!", id, new_dir);
+                     break;
+               }
+               break;
+            case WEST:
+               switch(new_dir){
+                  case NORTH:
+                     list[id].rotY += 90;
+                     break;
+                  case SOUTH:
+                     list[id].rotY -= 90;
+                     break;
+                  case EAST:
+                     list[id].rotY -= 180;
+                     break;
+                  case WEST:
+                     break; // Moving same as initial direction, do nothing
+                  default:
+                     fprintf(stderr, "ERROR: Invalid new direction for mob %d: %d\n!", id, new_dir);
+                     break;
+               }
+               break;
+            default:
+               fprintf(stderr, "ERROR: Invalid facing direction for mob %d: %d\n!", id, list[id].facing);
+               break;
+         }
+         // Update destination location
+         switch(new_dir){
+            case NORTH:
+               list[id].next_location.x = list[id].location.x;
+               list[id].next_location.y = list[id].location.y + 1;
+               break;
+            case SOUTH:
+               list[id].next_location.x = list[id].location.x;
+               list[id].next_location.y = list[id].location.y - 1;
+               break;
+            case EAST:
+               list[id].next_location.x = list[id].location.x + 1;
+               list[id].next_location.y = list[id].location.y;
+               break;
+            case WEST:
+               list[id].next_location.x = list[id].location.x - 1;
+               list[id].next_location.y = list[id].location.y;
+               break;
+         }
+         list[id].destX = list[id].next_location.x + 0.5;
+         list[id].destY = list[id].worldY;
+         list[id].destZ = list[id].next_location.y + 0.5;
+         // Update to new direction
+         list[id].facing = new_dir;
+         // Set mob to moving
+         list[id].is_moving = true;
+         // Apply new rotation direction
+         setRotateMesh(id, list[id].rotX, list[id].rotY, list[id].rotZ);
+         // Update entity map position
+         levelStack.floors[levelStack.currentFloor]->floorEntities[list[id].location.x][list[id].location.y] = ' ';
+         levelStack.floors[levelStack.currentFloor]->floorEntities[list[id].next_location.x][list[id].next_location.y] = 'M';
+      }
+      // Lerp toward our new position
+      list[id].worldX = lerp(list[id].worldX, list[id].destX, delta/250.0);
+      list[id].worldY = lerp(list[id].worldY, list[id].destY, delta/250.0);
+      list[id].worldZ = lerp(list[id].worldZ, list[id].destZ, delta/250.0);
+      // Update position
+      setTranslateMesh(id, list[id].worldX, list[id].worldY, list[id].worldZ);
+      // Check if mob has reached destination tile
+      if(list[id].worldX == list[id].destX &&
+         list[id].worldY == list[id].destY &&
+         list[id].worldZ == list[id].destZ){
+            list[id].location.x = list[id].next_location.x;
+            list[id].location.y = list[id].next_location.y;
+            list[id].is_moving = false;
+         }
+   }
+   // Update (Extract) our viewing frustum
+   ExtractFrustum();
+   float px, py, pz;
+   getViewPosition(&px, &py, &pz);
+   px = -px;
+   py = -py;
+   pz = -pz;
+   // Run a visible update check on each mob!
+   for(id = 0; id < listSize; id++){
+      bool inFrust = CubeInFrustum2(list[id].worldX, list[id].worldY, list[id].worldZ, 1);
+      //bool inFrust = PointInFrustum(list[id].worldX, list[id].worldY, list[id].worldZ);
+      float dist = lengthTwoPoints(list[id].worldX, list[id].worldY, list[id].worldZ, px, py, pz);
+      // Only update if we're changing status (Switching visible to not visible and vice versa)
+      if(!list[id].is_visible && inFrust && dist <= drawDist){
+         drawMesh(id);
+         list[id].is_visible = true;
+         printf("Bat mesh #%d is visible.\n", id);
+      } else if(list[id].is_visible && !inFrust) {
+         hideMesh(id);
+         list[id].is_visible = false;
+         printf("Bat mesh #%d is not visible.\n", id);
+      }
+   }
+   // Job's Done!
+   return;
+}
+/*
+ * Utility function, indicates if a specific tile is currently visible
+ */
+bool isVisible(int x, int y){
+   // If we're in draw all mode just return true
+   if(displayMap == 1){
+      return true;
+   // Otherwise check against visibility array
+   } else {
+      return levelStack.floors[levelStack.currentFloor]->isVisible[x][y];
+   }
+}
+
+/*
+ * Utility function, updates visible array when player is moving to a new coordinate
+ */
+void updateVisible(int x, int y){
+   // Check if a point is in a room
+   int x1, y1;
+   // Check all rooms
+   for(y1 = 0; y1 <= 2; y1++){
+      for(x1 = 0; x1 <=2; x1++){
+         struct position origin;
+         struct position corner;
+
+         origin = levelStack.floors[levelStack.currentFloor]->rooms[x1][y1].origin;
+         corner = levelStack.floors[levelStack.currentFloor]->rooms[x1][y1].corner;
+
+         // We've found the room!
+         if(origin.x <= x && origin.y <= y && corner.x >= x && corner.y >= y){
+            // Flag all tiles in the room as visible
+            int x2, y2;
+            for(y2 = origin.y; y2 <= corner.y; y2++){
+               for(x2 = origin.x; x2 <= corner.x; x2++){
+                  levelStack.floors[levelStack.currentFloor]->isVisible[x2][y2] = 1;
+               }
+            }
+            return;
+         }
+      }
+   }
+
+   // If no rooms were found, assume we're in a corridor and update a 3x3 area around the coordinate
+   for(y1 = -1; y1 <= 1; y1++){
+      for(x1 = -1; x1 <=1; x1++){
+         levelStack.floors[levelStack.currentFloor]->isVisible[x + x1][y + y1] = 1;
+      }
+   }
+
+   return;
+}
 
 /*
  * Wipe the cloud layer only
  */
-
 void wipeClouds(){
    int x, z;
    for(x = 0; x < 100; x++){
@@ -317,6 +589,9 @@ void buildFloor(int floorNum){
             }
          }
       }
+
+      // Track MobIDs
+      int mobID = 0;
       // Next iterate over the entity list (For now just player placement & boxes)
       for(y = 0; y < dungeonFloor->floorHeight; y++){
          for(x = 0; x < dungeonFloor->floorWidth; x++){
@@ -337,6 +612,33 @@ void buildFloor(int floorNum){
                world[x][drawHeight+1][y] = USTAIRS_ID; // Draw a upward staircase
             } else if(dungeonFloor->floorEntities[x][y]=='D'){
                world[x][drawHeight+1][y] = DSTAIRS_ID; // Draw a downward staircase
+            } else if(dungeonFloor->floorEntities[x][y]=='M'){
+               // Load up a mob (mesh) at this location!
+               float mobx, moby, mobz;
+               mobx = x + 0.5;
+               moby = drawHeight + 1.5;
+               mobz = y + 0.5;
+               setMeshID(mobID, 2, mobx, moby, mobz);
+               setScaleMesh(mobID, 0.25);
+               // Save mob info to mob list
+               dungeonFloor->mobs[mobID].worldX = mobx;
+               dungeonFloor->mobs[mobID].worldY = moby;
+               dungeonFloor->mobs[mobID].worldZ = mobz;
+
+               dungeonFloor->mobs[mobID].rotX = 0.0;
+               dungeonFloor->mobs[mobID].rotY = 0.0;
+               dungeonFloor->mobs[mobID].rotZ = 0.0;
+               // Mob starts out not moving
+               dungeonFloor->mobs[mobID].facing = NORTH;
+               dungeonFloor->mobs[mobID].is_moving = false;
+
+               dungeonFloor->mobs[mobID].location.x = x;
+               dungeonFloor->mobs[mobID].location.y = y;
+               dungeonFloor->mobs[mobID].symbol = 'M';
+               // Wipe entity reference point (Similar to player) so we can draw float points to the map directly (Save on floor change)
+               dungeonFloor->floorEntities[x][y] = ' ';
+               // Cycle ID forward
+               mobID++;
             }
          }
       }
@@ -481,25 +783,127 @@ void collisionResponse() {
 	/*	set2Dcolour(float []); 				*/
 	/* colour must be set before other functions are called	*/
 void draw2D() {
+   // Check if map is going to be rendered or if we can skip
+   if(displayMap == 0){
+      return;
+   }
+   // Set colours
+   GLfloat green[] = {0.0, 0.6, 0.0, 0.25};
+   GLfloat darkgreen[] = {0.0, 0.3, 0.0, 0.5};
+   GLfloat brown[] = {0.8, 0.4, 0.0, 0.5};
+   GLfloat darkbrown[] = {0.4, 0.2, 0.0, 0.5};
+   GLfloat yellow[] = {0.5, 0.5, 0.0, 0.5};
+   GLfloat red[] = {0.5, 0.0, 0.0, 0.5};
+   GLfloat blue[] = {0.0, 0.0, 0.5, 0.75}; // Highlight player
+   GLfloat pink[] = {1.0, 0.40, 0.79, 0.75}; // Highlight alive + visible enemies
+   GLfloat purple[] = {0.5, 0.1, 1.0, 0.5};
+   GLfloat white[] = {1.0, 1.0, 1.0, 0.5};
+   GLfloat black[] = {0.0, 0.0, 0.0, 0.5};
 
    if (testWorld) {
 		/* draw some sample 2d shapes */
       if (displayMap == 1) {
-         GLfloat green[] = {0.0, 0.5, 0.0, 0.5};
          set2Dcolour(green);
          draw2Dline(0, 0, 500, 500, 15);
          draw2Dtriangle(0, 0, 200, 200, 0, 200);
 
-         GLfloat black[] = {0.0, 0.0, 0.0, 0.5};
          set2Dcolour(black);
          draw2Dbox(500, 380, 524, 388);
       }
    } else {
-
 	/* your code goes here */
+      int width = levelStack.floors[levelStack.currentFloor]->floorWidth;
+      int height = levelStack.floors[levelStack.currentFloor]->floorHeight;
+      bool isOutdoors = levelStack.floors[levelStack.currentFloor]->isOutdoors;
+      char** data = levelStack.floors[levelStack.currentFloor]->floorData;
+      char** entities = levelStack.floors[levelStack.currentFloor]->floorEntities;
+      struct mob* mobs = levelStack.floors[levelStack.currentFloor]->mobs;
+      int numMobs = levelStack.floors[levelStack.currentFloor]->mobCount;
+      int x, y, id;
 
+      // Calculate offsets
+      int xStep = screenWidth / width;
+      int yStep = screenHeight / height;
+
+      // Draw Player (And if outdoors, stairs)
+      if(displayMap == 1 || displayMap == 2){
+         set2Dcolour(blue);
+         float px, py, pz;
+         getViewPosition(&px, &py, &pz);
+         px = -px;
+         py = -py;
+         pz = -pz;
+         draw2Dbox((px - 0.5) * xStep, (pz - 0.5) * yStep, (px + 0.5) * xStep, (pz + 0.5) * yStep);
+         // Draw green block and stairs down if outdoors
+         if(isOutdoors){
+            // Draw stairs down
+            set2Dcolour(black);
+            float sx, sy, sz;
+            sx = levelStack.floors[levelStack.currentFloor]->sx;
+            sy = levelStack.floors[levelStack.currentFloor]->sy;
+            sz = levelStack.floors[levelStack.currentFloor]->sz;
+            draw2Dbox((sx - 0.5) * xStep, (sz - 0.5) * yStep, (sx + 0.5) * xStep, (sz + 0.5) * yStep);
+            // Draw green over the whole map and return
+            set2Dcolour(green);
+            draw2Dbox(xStep, yStep, screenWidth - xStep, screenHeight - yStep);
+            return;
+         }
+
+         // Draw our mobs
+         for(id = 0; id < numMobs; id++){
+            // Check if we're not rendering this mob (fog-of-war)
+            if(!isVisible(mobs[id].location.x, mobs[id].location.y)){
+               continue; // Skip to next mob
+            }
+            // Check if mob visible or not
+            if(mobs[id].is_visible){
+               set2Dcolour(pink);
+            } else {
+               set2Dcolour(purple);
+            }
+            // Get mobs location
+            float mx, my, mz;
+            mx = mobs[id].worldX;
+            my = mobs[id].worldY;
+            mz = mobs[id].worldZ;
+            // Draw at mob location
+            draw2Dbox((mx - 0.5) * xStep, (mz - 0.5) * yStep, (mx + 0.5) * xStep, (mz + 0.5) * yStep);
+         }
+
+         // Iterate over the whole map
+         for(y = 0; y < height; y++){
+            for(x = 0; x < width; x++){
+               // If the space has something to draw and is visible
+               if((data[x][y] != ' ' || entities[x][y] != ' ') && isVisible(x,y)){
+                  // Check for all items of interest
+                  // Walls
+                  if(data[x][y] == '#'){
+                     set2Dcolour(darkgreen);
+                  // Closed Doors
+                  } else if(data[x][y] == '/'){
+                     set2Dcolour(darkbrown);
+                  // Open Doors
+                  } else if(data[x][y] == '|'){
+                     set2Dcolour(brown);
+                  // Boxes
+                  } else if(entities[x][y] == 'B'){
+                     set2Dcolour(yellow);
+                  // Upstairs
+                  } else if(entities[x][y] == 'U'){
+                     set2Dcolour(white);
+                  // Downstairs
+                  } else if(entities[x][y] == 'D'){
+                     set2Dcolour(black);
+                  // Open room area
+                  } else {
+                     set2Dcolour(green);
+                  }
+                  draw2Dbox(x * xStep, y * yStep, (x + 1) * xStep, (y + 1) * yStep);
+               }
+            }
+         }
+      }
    }
-
 }
 
 
@@ -509,9 +913,9 @@ void draw2D() {
 	/*  system is running */
 	/* -gravity must also implemented here, duplicate collisionResponse */
 void update() {
-int i, j, k;
-float *la;
-float x, y, z;
+   int i, j, k;
+   float *la;
+   float x, y, z;
 
 	/* sample animation for the testworld, don't remove this code */
 	/* demo of animating mobs */
@@ -634,12 +1038,19 @@ float x, y, z;
       // Update view position
       setViewPosition(x, y, z);
 
+
       // Perform a collision check
       collisionResponse();
 
-      // Animate clouds if we're outside
+      // Check if we're on level 0 (outdoors)
       if(levelStack.floors[levelStack.currentFloor]->isOutdoors){
+         // Animate clouds
          animateClouds(delta);
+      } else {
+         // Update visibility
+         updateVisible((int)-x, (int)-z);
+         // Update mobs
+         mobUpdate(delta);
       }
    }
 }

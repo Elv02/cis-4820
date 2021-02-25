@@ -49,8 +49,8 @@
 LIBS = -lGL -lGLU -lglut -lm -D__LINUX__
 
 
-a1: a3.c graphics.c visible.c mesh.c maze.h perlin.h graphics.h mesh.h fast_obj.h
-	gcc a3.c maze.c perlin.c graphics.c visible.c mesh.c  -o a1 $(LIBS) 
+a1: a3.c graphics.c visible.c mesh.c maze.h perlin.h graphics.h mesh.h fast_obj.h visible.h
+	gcc a3.c maze.c perlin.c graphics.c visible.c mesh.c  -o a1 $(LIBS) -g
 
 clean:
 	rm a1

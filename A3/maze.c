@@ -27,11 +27,13 @@ struct floor* initMaze(int floorWidth, int floorHeight, bool isOutdoors){
     // Populate parameters
     toRet->floorWidth = floorWidth;
     toRet->floorHeight = floorHeight;
+    toRet->mobCount = 0; // Start with 0 mobs
 
     // Allocate floor data
     toRet->floorData = (char**)malloc(toRet->floorWidth * sizeof(char*));
     toRet->floorEntities = (char**)malloc(toRet->floorWidth * sizeof(char*));
     toRet->heightMap = (float**)malloc(toRet->floorWidth * sizeof(float*));
+    toRet->isVisible = (int**)malloc(toRet->floorWidth * sizeof(int*));
 
     // Sanity check
     if(toRet->floorData==NULL){
@@ -89,6 +91,21 @@ struct floor* initMaze(int floorWidth, int floorHeight, bool isOutdoors){
         }
     }
 
+    // Init visible array
+    for(i = 0; i < toRet->floorWidth; i++){
+        toRet->isVisible[i] = (int*)malloc(toRet->floorHeight * sizeof(int));
+        if(toRet->isVisible[i] == NULL){
+            fprintf(stderr, "ERROR: floor data for column %d could not be allocated! Aborting!", i);
+            // Attempt cleanup!
+            while(i>=0){
+                free(toRet->isVisible[--i]);
+            }
+            free(toRet->isVisible);
+            free(toRet);
+            return NULL;
+        }
+    }
+
     if(DEBUG==0)
         printf("floor data allocated...\n");
 
@@ -137,6 +154,7 @@ void genMaze(struct floor* maze){
         for(y = 0; y < maze->floorHeight; y++){
             maze->floorData[x][y] = ' ';
             maze->floorEntities[x][y] = ' ';
+            maze->isVisible[x][y] = 0; // All tiles start off as not visible
         }
     }
 
@@ -517,7 +535,6 @@ void wallOffHalls(struct floor* maze){
 
 void populateFloor(struct floor* maze){
     struct position pen; // Point for writing to the maze
-    int numBoxes; // Number of boxes to spawn in a given room
     int x, y;
 
     // Pick 2 random rooms for up and down staircases
@@ -543,11 +560,32 @@ void populateFloor(struct floor* maze){
         }
     }
 
+    // Spawn some mobs in each room
+    for(y = 0; y < 3; y++){
+        for(x = 0; x < 3; x++){
+            int max = (int)floor(sqrt(maze->rooms[x][y].roomWidth * maze->rooms[x][y].roomHeight));
+            max = (int)(max / 2);
+            int numMobs = randRange(1, max);
+            while(numMobs>0){
+                pen.x = randRange(maze->rooms[x][y].origin.x + 1, maze->rooms[x][y].corner.x - 1);
+                pen.y = randRange(maze->rooms[x][y].origin.y + 1, maze->rooms[x][y].corner.y - 1);
+                if(maze->floorEntities[pen.x][pen.y]==' ' && !isBlockingDoor(maze, pen.x, pen.y)){
+                    maze->floorEntities[pen.x][pen.y] = 'M';
+                    maze->mobCount++;
+                } 
+                numMobs--;
+            }
+        }
+    }
+
+    // Allocate mob array now that we know amount of mobs for the floor
+    maze->mobs = (struct mob*)malloc(maze->mobCount * sizeof(struct mob));
+
     // Toss some random boxes into each room
     for(y = 0; y < 3; y++){
         for(x = 0; x < 3; x++){
             int max = (int)floor(sqrt(maze->rooms[x][y].roomWidth * maze->rooms[x][y].roomHeight));
-            numBoxes = randRange(0, max);
+            int numBoxes = randRange(0, max);
             while(numBoxes>0){
                 pen.x = randRange(maze->rooms[x][y].origin.x + 1, maze->rooms[x][y].corner.x - 1);
                 pen.y = randRange(maze->rooms[x][y].origin.y + 1, maze->rooms[x][y].corner.y - 1);
