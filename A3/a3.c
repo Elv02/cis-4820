@@ -328,14 +328,13 @@ void mobUpdate(int delta){
    // Run a visible update check on each mob!
    for(id = 0; id < listSize; id++){
       bool inFrust = CubeInFrustum2(list[id].worldX, list[id].worldY, list[id].worldZ, 1);
-      //bool inFrust = PointInFrustum(list[id].worldX, list[id].worldY, list[id].worldZ);
       float dist = lengthTwoPoints(list[id].worldX, list[id].worldY, list[id].worldZ, px, py, pz);
       // Only update if we're changing status (Switching visible to not visible and vice versa)
       if(!list[id].is_visible && inFrust && dist <= drawDist){
          drawMesh(id);
          list[id].is_visible = true;
          printf("Bat mesh #%d is visible.\n", id);
-      } else if(list[id].is_visible && !inFrust) {
+      } else if(list[id].is_visible && (!inFrust || dist > drawDist)) {
          hideMesh(id);
          list[id].is_visible = false;
          printf("Bat mesh #%d is not visible.\n", id);
