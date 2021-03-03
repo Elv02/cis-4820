@@ -560,26 +560,10 @@ void populateFloor(struct floor* maze){
         }
     }
 
-    // Spawn *a* mob in each room
-    for(y = 0; y < 3; y++){
-        for(x = 0; x < 3; x++){
-            while(true){
-                pen.x = randRange(maze->rooms[x][y].origin.x + 1, maze->rooms[x][y].corner.x - 1);
-                pen.y = randRange(maze->rooms[x][y].origin.y + 1, maze->rooms[x][y].corner.y - 1);
-                if(maze->floorEntities[pen.x][pen.y]==' ' && !isBlockingDoor(maze, pen.x, pen.y)){
-                    maze->floorEntities[pen.x][pen.y] = 'M';
-                    maze->mobCount++;
-                    break;
-                } 
-            }
-        }
-    }
-
     // Spawn some mobs in each room
-    /* Commented out for now since we should only have *one* per room (for now)
     for(y = 0; y < 3; y++){
         for(x = 0; x < 3; x++){
-            int max = (int)floor(sqrt(maze->rooms[x][y].roomWidth * maze->rooms[x][y].roomHeight));
+            int max = (int)floor(sqrt((maze->rooms[x][y].roomWidth/2.0) * (maze->rooms[x][y].roomHeight/2.0)));
             max = (int)(max / 2);
             int numMobs = randRange(1, max);
             while(numMobs>0){
@@ -588,11 +572,11 @@ void populateFloor(struct floor* maze){
                 if(maze->floorEntities[pen.x][pen.y]==' ' && !isBlockingDoor(maze, pen.x, pen.y)){
                     maze->floorEntities[pen.x][pen.y] = 'M';
                     maze->mobCount++;
+                    numMobs--;
                 } 
-                numMobs--;
             }
         }
-    }*/
+    }
 
     // Allocate mob array now that we know amount of mobs for the floor
     maze->mobs = (struct mob*)malloc(maze->mobCount * sizeof(struct mob));

@@ -25,13 +25,13 @@ graphics.c, mesh.c and visible.c files when running gcc!
 To run the program use '/a1'.  Optionally you may use the '-help' flag
 to see a list of available commands.
 
-| Important New Implementation Notes |
-|====================================|
+| New Implementation Notes |
+|==========================|
 
 1) Enemies will always stay in the room they've been spawned in initially.   However do note they can stumble into the hallways once a door has been opened.
 
-2) To aid in illustrating if an enemy is visible or not, I change the colour of the enemy from purple to pink on the radar when they are currently being rendered.
-   (This is in addition to the console output, which is still there.)
+2) To aid in illustrating if an enemy is being rendered or not, I change the colour of the enemy from purple to pink 
+   on the radar when they are currently being rendered.  (This is in addition to the console output)
 
 | Old Implementation Reminders |
 |==============================|
