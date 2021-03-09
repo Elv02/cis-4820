@@ -146,7 +146,15 @@ bool isEmpty(int x, int y){
    if(lvlCheck == '#' || lvlCheck == '/'){
       return false;
    }
-   if(entCheck == 'M' || entCheck == 'B' || entCheck == 'U' || entCheck == 'D'){
+   if(entCheck == 'C' || entCheck == 'B' || entCheck == 'F' || entCheck == '$' || entCheck == 'U' || entCheck == 'D' || entCheck == '@'){
+      return false;
+   }
+   float pX, pY, pZ;
+   getViewPosition(&pX, &pY, &pZ);
+   pX = -pX;
+   pY = -pY;
+   pZ = -pZ;
+   if((int)pX == x && (int)pZ == y){
       return false;
    }
    return true;
@@ -186,11 +194,15 @@ void mobUpdate(int delta){
    int id;
    // Iterate over all mobs
    for(id = 0; id < listSize; id++){
-      // Check if mob needs move instruction
-      if(!list[id].is_moving){
+      // Skip dead mobs
+      if(!list[id].is_active){
+         continue;
+      }
+      // Check if mob needs to take a turn
+      if(!list[id].is_moving && list[id].my_turn){
          // Calculate a new direction, rotate mob, and update the destination coordinate
          int new_dir = randRange(0, 3);
-         // TODO: Validate this move direction is correct
+         // Validate this move direction is correct
          if(!isValidMove(list[id].location.x, list[id].location.y, new_dir)){
             continue; // This mob doesn't move this tick
          }
@@ -297,26 +309,30 @@ void mobUpdate(int delta){
          list[id].facing = new_dir;
          // Set mob to moving
          list[id].is_moving = true;
+         // No longer our turn
+         list[id].my_turn = false;
          // Apply new rotation direction
          setRotateMesh(id, list[id].rotX, list[id].rotY, list[id].rotZ);
          // Update entity map position
          levelStack.floors[levelStack.currentFloor]->floorEntities[list[id].location.x][list[id].location.y] = ' ';
-         levelStack.floors[levelStack.currentFloor]->floorEntities[list[id].next_location.x][list[id].next_location.y] = 'M';
+         levelStack.floors[levelStack.currentFloor]->floorEntities[list[id].next_location.x][list[id].next_location.y] = list[id].symbol;
+      } else {
+         // Lerp toward our new position
+         list[id].worldX = lerp(list[id].worldX, list[id].destX, delta/25.0);
+         list[id].worldY = lerp(list[id].worldY, list[id].destY, delta/25.0);
+         list[id].worldZ = lerp(list[id].worldZ, list[id].destZ, delta/25.0);
+         // Update position
+         setTranslateMesh(id, list[id].worldX, list[id].worldY, list[id].worldZ);
+         // Check if mob has reached destination tile
+         if(list[id].worldX == list[id].destX &&
+            list[id].worldY == list[id].destY &&
+            list[id].worldZ == list[id].destZ){
+               list[id].location.x = list[id].next_location.x;
+               list[id].location.y = list[id].next_location.y;
+               list[id].is_moving = false;
+            }
       }
-      // Lerp toward our new position
-      list[id].worldX = lerp(list[id].worldX, list[id].destX, delta/250.0);
-      list[id].worldY = lerp(list[id].worldY, list[id].destY, delta/250.0);
-      list[id].worldZ = lerp(list[id].worldZ, list[id].destZ, delta/250.0);
-      // Update position
-      setTranslateMesh(id, list[id].worldX, list[id].worldY, list[id].worldZ);
-      // Check if mob has reached destination tile
-      if(list[id].worldX == list[id].destX &&
-         list[id].worldY == list[id].destY &&
-         list[id].worldZ == list[id].destZ){
-            list[id].location.x = list[id].next_location.x;
-            list[id].location.y = list[id].next_location.y;
-            list[id].is_moving = false;
-         }
+      
    }
    // Update (Extract) our viewing frustum
    ExtractFrustum();
@@ -333,11 +349,9 @@ void mobUpdate(int delta){
       if(!list[id].is_visible && inFrust && dist <= drawDist){
          drawMesh(id);
          list[id].is_visible = true;
-         printf("Bat mesh #%d is visible.\n", id);
       } else if(list[id].is_visible && (!inFrust || dist > drawDist)) {
          hideMesh(id);
          list[id].is_visible = false;
-         printf("Bat mesh #%d is not visible.\n", id);
       }
    }
    // Job's Done!
@@ -464,6 +478,39 @@ void wipeWorld(){
    // Iterate over all mobs
    for(id = 0; id < listSize; id++){
       unsetMeshID(id);
+   }
+   return;
+}
+
+/*
+ * Check if player has moved into a new tile
+ */
+void turnCheck(){
+   // Check if a turn was made
+   float pX, pY, pZ;
+   getViewPosition(&pX, &pY, &pZ);
+   int iX = (int)pX;
+   int iY = (int)pY;
+   int iZ = (int)pZ;
+   int cX = levelStack.floors[levelStack.currentFloor]->px;
+   int cY = levelStack.floors[levelStack.currentFloor]->py;
+   int cZ = levelStack.floors[levelStack.currentFloor]->pz;
+   // If we've moved more than 1 whole tile, mobs get a turn
+   if(cX != iX || cY != iY || cZ != iZ){
+      // Get a reference to the mob list
+      struct mob* list = levelStack.floors[levelStack.currentFloor]->mobs;
+      // Get size of list
+      int listSize = levelStack.floors[levelStack.currentFloor]->mobCount;
+      // Track current id
+      int id;
+      // Iterate over all mobs
+      for(id = 0; id < listSize; id++){
+         list[id].my_turn = true;
+      }
+      // Save new player position
+      levelStack.floors[levelStack.currentFloor]->px = iX;
+      levelStack.floors[levelStack.currentFloor]->py = iY;
+      levelStack.floors[levelStack.currentFloor]->pz = iZ;
    }
    return;
 }
@@ -604,8 +651,9 @@ void buildFloor(int floorNum){
       // Next iterate over the entity list (For now just player placement & boxes)
       for(y = 0; y < dungeonFloor->floorHeight; y++){
          for(x = 0; x < dungeonFloor->floorWidth; x++){
+            char entity = dungeonFloor->floorEntities[x][y];
             // Player found! Setup at coordinates
-            if(dungeonFloor->floorEntities[x][y]=='@'){
+            if(entity=='@'){
                if(DEBUG==0)
                   printf("Setting player 0 at (%d, %d, %d)...\n", x, drawHeight+1, y);
                // Setup viewport
@@ -615,19 +663,34 @@ void buildFloor(int floorNum){
                // Wipe player reference point so it can be saved when they move to a different staircase
                dungeonFloor->floorEntities[x][y] = ' ';
             // Box found!
-            } else if(dungeonFloor->floorEntities[x][y]=='B'){
+            } else if(entity=='$'){
                world[x][drawHeight+1][y] = BOX_ID; // Draw a box
-            } else if(dungeonFloor->floorEntities[x][y]=='U'){
+            } else if(entity=='U'){
                world[x][drawHeight+1][y] = USTAIRS_ID; // Draw a upward staircase
-            } else if(dungeonFloor->floorEntities[x][y]=='D'){
+            } else if(entity=='D'){
                world[x][drawHeight+1][y] = DSTAIRS_ID; // Draw a downward staircase
-            } else if(dungeonFloor->floorEntities[x][y]=='M'){
+            } else if(entity=='C' || entity=='B' || entity=='F'){
+               int toLoad;
+               switch(entity){
+                  case 'C':
+                     toLoad = 3;
+                     break;
+                  case 'B':
+                     toLoad = 2;
+                     break;
+                  case 'F':
+                     toLoad = 1;
+                     break;
+                  default:
+                     toLoad = 0; // Load the cow in event of an error
+                     break;
+               }
                // Load up a mob (mesh) at this location!
                float mobx, moby, mobz;
                mobx = x + 0.5;
                moby = drawHeight + 1.5;
                mobz = y + 0.5;
-               setMeshID(mobID, 2, mobx, moby, mobz);
+               setMeshID(mobID, toLoad, mobx, moby, mobz);
                setScaleMesh(mobID, 0.25);
                // Save mob info to mob list
                dungeonFloor->mobs[mobID].worldX = mobx;
@@ -640,10 +703,12 @@ void buildFloor(int floorNum){
                // Mob starts out not moving
                dungeonFloor->mobs[mobID].facing = NORTH;
                dungeonFloor->mobs[mobID].is_moving = false;
+               dungeonFloor->mobs[mobID].my_turn = false;
 
                dungeonFloor->mobs[mobID].location.x = x;
                dungeonFloor->mobs[mobID].location.y = y;
-               dungeonFloor->mobs[mobID].symbol = 'M';
+               dungeonFloor->mobs[mobID].symbol = entity;
+               dungeonFloor->mobs[mobID].is_active = true;
                // Wipe entity reference point (Similar to player) so we can draw float points to the map directly (Save on floor change)
                dungeonFloor->floorEntities[x][y] = ' ';
                // Cycle ID forward
@@ -775,9 +840,35 @@ void collisionResponse() {
             }
          }
       }
-      // General collision logic goes here
-      // We hit a door, open it
-       
+   }
+   
+   // Check if we're running into any mobs
+   // Get a reference to the mob list
+   struct mob* list = levelStack.floors[levelStack.currentFloor]->mobs;
+   // Get size of list
+   int listSize = levelStack.floors[levelStack.currentFloor]->mobCount;
+   // Track current id
+   int id;
+   // Iterate over all mobs
+   for(id = 0; id < listSize; id++){
+      if(!list[id].is_active){
+         continue;
+      }
+      if((int)nX == list[id].location.x && (int)nZ == list[id].location.y){
+         // "Combat"
+         int chance = randRange(0, 1);
+         if(chance){
+            printf("Player hit mob %d! It has died.\n", id);
+            list[id].is_active = false;
+            list[id].is_visible = false;
+            levelStack.floors[levelStack.currentFloor]->floorEntities[list[id].location.x][list[id].location.y] = ' ';
+            unsetMeshID(id);
+         } else {
+            printf("Player swung at mob %d and missed!\n", id);
+            // Reset position 
+            setViewPosition(-oX, -oY, -oZ);
+         }
+      }
    }
    return;
 }
@@ -802,11 +893,13 @@ void draw2D() {
    GLfloat brown[] = {0.8, 0.4, 0.0, 0.5};
    GLfloat darkbrown[] = {0.4, 0.2, 0.0, 0.5};
    GLfloat yellow[] = {0.5, 0.5, 0.0, 0.5};
-   GLfloat red[] = {0.5, 0.0, 0.0, 0.5};
-   GLfloat blue[] = {0.0, 0.0, 0.5, 0.75}; // Highlight player
-   GLfloat pink[] = {1.0, 0.40, 0.79, 0.75}; // Highlight alive + visible enemies
-   GLfloat purple[] = {0.5, 0.1, 1.0, 0.5};
+   GLfloat blue[] = {0.0, 0.0, 0.6, 0.75};
+   GLfloat darkblue[] = {0.0, 0.0, 0.2, 0.5};
+   GLfloat red[] = {0.5, 0.0, 0.0, 0.75};
+   GLfloat pink[] = {1.0, 0.40, 0.79, 0.75}; 
+   GLfloat purple[] = {0.5, 0.1, 1.0, 0.75};
    GLfloat white[] = {1.0, 1.0, 1.0, 0.5};
+   GLfloat grey[] = {0.5, 0.5, 0.5, 0.5};
    GLfloat black[] = {0.0, 0.0, 0.0, 0.5};
 
    if (testWorld) {
@@ -860,15 +953,28 @@ void draw2D() {
 
          // Draw our mobs
          for(id = 0; id < numMobs; id++){
+            // Check if mob is dead
+            if(!mobs[id].is_active){
+               continue;
+            }
             // Check if we're not rendering this mob (fog-of-war)
             if(!isVisible(mobs[id].location.x, mobs[id].location.y)){
                continue; // Skip to next mob
             }
-            // Check if mob visible or not
-            if(mobs[id].is_visible){
-               set2Dcolour(pink);
-            } else {
-               set2Dcolour(purple);
+            // Set colour based on mob type
+            switch(mobs[id].symbol){
+               case 'C': // Cactus
+                  set2Dcolour(pink);
+                  break; 
+               case 'B': // Bat
+                  set2Dcolour(red);
+                  break;
+               case 'F': // Fish
+                  set2Dcolour(purple);
+                  break;
+               default: // ERROR
+                  set2Dcolour(grey);
+                  break;
             }
             // Get mobs location
             float mx, my, mz;
@@ -895,7 +1001,7 @@ void draw2D() {
                   } else if(data[x][y] == '|'){
                      set2Dcolour(brown);
                   // Boxes
-                  } else if(entities[x][y] == 'B'){
+                  } else if(entities[x][y] == '$'){
                      set2Dcolour(yellow);
                   // Upstairs
                   } else if(entities[x][y] == 'U'){
@@ -1047,7 +1153,6 @@ void update() {
       // Update view position
       setViewPosition(x, y, z);
 
-
       // Perform a collision check
       collisionResponse();
 
@@ -1058,6 +1163,8 @@ void update() {
       } else {
          // Update visibility
          updateVisible((int)-x, (int)-z);
+         // Turn check
+         turnCheck();
          // Update mobs
          mobUpdate(delta);
       }

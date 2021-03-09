@@ -1,0 +1,42 @@
+|========================|
+| Warren Hoeft (0872179) |
+|  CIS 4820 Assignment 4 |
+|       03/09/2020       |
+|========================|
+
+
+| Compilation Instructions |
+|==========================|
+
+The provided makefile is setup for Linux Libraries by default. The
+path for MACOS are also provided but is commented out.
+
+To compile the program use the makefile by executing the 'make' command
+while in the directory containing 'makefile'.  This will generate an 
+executable called 'a1'.
+
+IMPORTANT NOTE: If using another Makefile that is not the provided one,
+you *must* be sure to include the maze.c, and perlin.c in addition to the a1.c,
+graphics.c, mesh.c and visible.c files when running gcc!
+
+| Execution Instructions |
+|========================|   
+
+To run the program use '/a1'.  Optionally you may use the '-help' flag
+to see a list of available commands.
+
+| New Implementation Notes |
+|==========================|
+
+1) Enemies will always stay in the room they've been spawned in initially.   However do note they can stumble into the hallways once a door has been opened.
+
+2) To aid in illustrating if an enemy is being rendered or not, I change the colour of the enemy from purple to pink 
+   on the radar when they are currently being rendered.  (This is in addition to the console output)
+
+| Old Implementation Reminders |
+|==============================|
+
+1) The player will always spawn above ground within 5 blocks of the stairs block leading
+into the dungeon.
+
+2) The bonus feature of being able to open doors is still in this version.
