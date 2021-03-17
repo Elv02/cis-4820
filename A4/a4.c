@@ -126,6 +126,294 @@ extern void hideMesh(int);
 
 /********* end of extern variable declarations **************/
 /*
+ * Return direction from current position to viewport
+ */
+int dirToPlayer(struct position p){
+   float vX, vY, vZ;
+   getViewPosition(&vX, &vY, &vZ);
+   vX = -vX;
+   vY = -vY;
+   vZ = -vZ;
+   int x = floor(vX) - p.x;
+   int y = floor(vZ) - p.y;
+   float angle = atan2(y, x);
+   if( (angle>=-M_PI/4 && angle <= M_PI/4) ){
+      return EAST;
+   } else if(angle >= M_PI/4 && angle <= (3*M_PI)/4){
+      return NORTH;
+   } else if(angle >= (3*M_PI)/4 || angle <= -(3*M_PI)/4){
+      return WEST;
+   } else if(angle <= -(M_PI)/4 && angle >= -(3*M_PI)/4){
+      return SOUTH;
+   } else {
+      fprintf(stderr, "ERROR: Could not properly determine angle between points (%d, %d) and (%d, %d)! Retrieved angle: %lf\n", 
+         (int)floor(vX), (int)floor(vZ), p.x, p.y, angle);
+      return 0;
+   }
+}
+/*
+ * Rotate a mob to face a new direction
+ */
+void faceDirection(int id, struct mob *m, int new_dir){
+   switch(m->facing){
+      case NORTH:
+         switch(new_dir){
+            case NORTH:
+               break; // Moving same as initial direction, do nothing
+            case SOUTH:
+               m->rotY -= 180;
+               break; 
+            case EAST:
+               m->rotY += 90;
+               break;
+            case WEST:
+               m->rotY -= 90;
+               break;
+            default:
+               fprintf(stderr, "ERROR: Invalid new direction for mob %d: %d\n!", id, new_dir);
+               break;
+         }
+         break;
+      case SOUTH:
+         switch(new_dir){
+            case NORTH:
+               m->rotY -= 180;
+               break;
+            case SOUTH: 
+               break; // Moving same as initial direction, do nothing
+            case EAST:
+               m->rotY -= 90;
+               break;
+            case WEST:
+               m->rotY += 90;
+               break;
+            default:
+               fprintf(stderr, "ERROR: Invalid new direction for mob %d: %d\n!", id, new_dir);
+               break;
+         }
+         break;
+      case EAST:
+         switch(new_dir){
+            case NORTH:
+               m->rotY -= 90;
+               break;
+            case SOUTH:
+               m->rotY += 90;
+               break;
+            case EAST:
+               break; // Moving same as initial direction, do nothing
+            case WEST:
+               m->rotY -= 180;
+               break;
+            default:
+               fprintf(stderr, "ERROR: Invalid new direction for mob %d: %d\n!", id, new_dir);
+               break;
+         }
+         break;
+      case WEST:
+         switch(new_dir){
+            case NORTH:
+               m->rotY += 90;
+               break;
+            case SOUTH:
+               m->rotY -= 90;
+               break;
+            case EAST:
+               m->rotY -= 180;
+               break;
+            case WEST:
+               break; // Moving same as initial direction, do nothing
+            default:
+               fprintf(stderr, "ERROR: Invalid new direction for mob %d: %d\n!", id, new_dir);
+               break;
+         }
+         break;
+      default:
+         fprintf(stderr, "ERROR: Invalid facing direction for mob %d: %d\n!", id, m->facing);
+         break;
+   }
+   // Update new facing direction
+   m->facing = new_dir;
+   // Apply new rotation direction
+   setRotateMesh(id, m->rotX, m->rotY, m->rotZ);
+   return;
+}
+/*
+ * Check if player is within attack range of mob position
+ */
+bool isPlayerAttackable(struct position p){
+   float pX, pY, pZ;
+   getViewPosition(&pX, &pY, &pZ);
+   pX = -pX;
+   pY = -pY;
+   pZ = -pZ;
+   int x, y;
+   x = floor(pX);
+   y = floor(pZ);
+   if(abs(x - p.x)<=1 && abs(y - p.y)<=1){
+      return true;
+   } else {
+      return false;
+   }
+}
+/*
+ * Have mob attack player
+ */
+void attackPlayer(int id, struct mob *m){
+   // "Combat"
+   int chance = randRange(0, 1);
+   faceDirection(id, m, dirToPlayer(m->location));
+   if(chance){
+      printf("Mob %d hit player!\n", id);
+      // TODO: Combat calculations here, etc.
+   } else {
+      printf("Mob %d swung at the player and missed!\n", id);
+   }
+   return;
+}
+/*
+ * Turn logic for the cactus
+ */
+void cactusTurn(int id, struct mob *m){
+   // Cactus can only be in one of 2 states, IDLE or ATTACKING.
+   // Determined by Player entering attack range.
+   if(isPlayerAttackable(m->location)){
+      m->state = ATTACKING;
+   } else {
+      m->state = IDLE;
+   }
+   switch(m->state){
+      case IDLE:
+         break;
+      case ATTACKING:
+         attackPlayer(id, m);
+         break;
+   }
+   return;
+}
+/*
+ * Turn logic for the fish
+ */
+void fishTurn(int id, struct mob *m){
+   if(isPlayerAttackable(m->location) && m->is_aggro){
+      m->state = ATTACKING;
+   }
+   switch(m->state){
+      case IDLE:
+         if(m->is_aggro){
+            struct position playerPos;
+            playerPos.x = -levelStack.floors[levelStack.currentFloor]->px;
+            playerPos.y = -levelStack.floors[levelStack.currentFloor]->pz;
+            m->my_path = getPath(levelStack.floors[levelStack.currentFloor], m->location, playerPos);
+            m->state = PURSUING;
+         } else {
+            struct position toGo = randPosInSameRoom(levelStack.floors[levelStack.currentFloor], m->location);
+            m->my_path = getPath(levelStack.floors[levelStack.currentFloor], m->location, toGo);
+            m->state = ROAMING;
+         }
+         break;
+      case ROAMING:
+         if(m->my_path.numPoints <=0 || m->my_path.currPoint >= m->my_path.numPoints){
+            struct position toGo = randPosInSameRoom(levelStack.floors[levelStack.currentFloor], m->location);
+            m->my_path = getPath(levelStack.floors[levelStack.currentFloor], m->location, toGo);
+         } 
+         if(m->my_path.currPoint < m->my_path.numPoints){
+            m->is_moving = true;
+            m->destX = m->my_path.points[m->my_path.currPoint].x + 0.5;
+            m->destY = m->worldY;
+            m->destZ = m->my_path.points[m->my_path.currPoint].y + 0.5;
+            m->next_location.x = m->my_path.points[m->my_path.currPoint].x;
+            m->next_location.y = m->my_path.points[m->my_path.currPoint].y;
+            m->my_path.currPoint++;
+         }
+         break;
+      case PURSUING:
+         if(m->my_path.numPoints <=0 || m->my_path.currPoint >= m->my_path.numPoints){
+            struct position playerPos;
+            playerPos.x = -levelStack.floors[levelStack.currentFloor]->px;
+            playerPos.y = -levelStack.floors[levelStack.currentFloor]->pz;
+            m->my_path = getPath(levelStack.floors[levelStack.currentFloor], m->location, playerPos);
+         } 
+         if(m->my_path.currPoint < m->my_path.numPoints){
+            m->is_moving = true;
+            m->destX = m->my_path.points[m->my_path.currPoint].x + 0.5;
+            m->destY = m->worldY;
+            m->destZ = m->my_path.points[m->my_path.currPoint].y + 0.5;
+            m->next_location.x = m->my_path.points[m->my_path.currPoint].x;
+            m->next_location.y = m->my_path.points[m->my_path.currPoint].y;
+            m->my_path.currPoint++;
+         }
+         break;
+      case ATTACKING:
+         attackPlayer(id, m);
+         m->state = IDLE;
+         break;
+      case STUCK:
+         // Recalculate path based on state
+         if(m->is_aggro)
+         break;
+      default:
+         break;
+   }
+   return;
+}
+/*
+ * Turn logic for the bat
+ */
+void batTurn(int id, struct mob *m){
+   switch(m->state){
+      case IDLE:
+         break;
+      case ROAMING:
+         break;
+      case PURSUING:
+         break;
+      case ATTACKING:
+         break;
+      case STUCK:
+         break;
+      default:
+         break;
+   }
+   return;
+}
+/*
+ * Visibility check for each mob
+ */
+void mobVisibleUpdate(){
+   // Get a reference to the mob list
+   struct mob* list = levelStack.floors[levelStack.currentFloor]->mobs;
+   // Get size of list
+   int listSize = levelStack.floors[levelStack.currentFloor]->mobCount;
+   // Track current id
+   int id;
+   // Update (Extract) our viewing frustum
+   ExtractFrustum();
+   float px, py, pz;
+   getViewPosition(&px, &py, &pz);
+   px = -px;
+   py = -py;
+   pz = -pz;
+   // Run a visible update check on each mob!
+   for(id = 0; id < listSize; id++){
+      bool inFrust = CubeInFrustum2(list[id].worldX, list[id].worldY, list[id].worldZ, 1);
+      float dist = lengthTwoPoints(list[id].worldX, list[id].worldY, list[id].worldZ, px, py, pz);
+      // Only update if we're changing status (Switching visible to not visible and vice versa)
+      if(!list[id].is_visible && inFrust && dist <= drawDist){
+         drawMesh(id);
+         list[id].is_visible = true;
+         if(!list[id].is_aggro){
+            list[id].is_aggro = true;
+         }
+      } else if(list[id].is_visible && (!inFrust || dist > drawDist)) {
+         hideMesh(id);
+         list[id].is_visible = false;
+      }
+   }
+   // Job's Done!
+   return;
+}
+/*
  * Linear Interpolation function
  * Interpolates between v0 and v1 by t amount
  */
@@ -182,9 +470,71 @@ bool isValidMove(int x, int y, int dir){
    }
    return isEmpty(nx, ny);
 }
+
+/*
+ * Process all updates for mobs (UPDATED)
+ */
+void mobUpdate2(int delta){
+   // Get a reference to the mob list
+   struct mob* list = levelStack.floors[levelStack.currentFloor]->mobs;
+   // Get size of list
+   int listSize = levelStack.floors[levelStack.currentFloor]->mobCount;
+   // Track current id
+   int id;
+   // Iterate over all mobs
+   for(id = 0; id < listSize; id++){
+      // Skip dead mobs
+      if(!list[id].is_active){
+         continue;
+      }
+      // Check if mob needs to take a turn
+      if(!list[id].is_moving && list[id].my_turn){
+         // Process turns
+         switch(list[id].symbol){
+            case 'B':
+               batTurn(id, &list[id]);
+               break;
+            case 'C':
+               cactusTurn(id, &list[id]);
+               break;
+            case 'F':
+               fishTurn(id, &list[id]);
+               break;
+            default:
+               fprintf(stderr, "ERROR: Unknown mob type %c!\n Cannot take turn.\n", list[id].symbol);
+               break;
+         }
+         // Turn is over
+         list[id].my_turn = false;
+      // Check if mob is in the middle of moving (lerp)
+      } else if(list[id].is_moving){
+         // Lerp toward our new position
+         list[id].worldX = lerp(list[id].worldX, list[id].destX, delta/25.0);
+         list[id].worldY = lerp(list[id].worldY, list[id].destY, delta/25.0);
+         list[id].worldZ = lerp(list[id].worldZ, list[id].destZ, delta/25.0);
+         // Update position
+         setTranslateMesh(id, list[id].worldX, list[id].worldY, list[id].worldZ);
+         // Check if mob has reached destination tile
+         if(list[id].worldX == list[id].destX &&
+            list[id].worldY == list[id].destY &&
+            list[id].worldZ == list[id].destZ){
+               list[id].location.x = list[id].next_location.x;
+               list[id].location.y = list[id].next_location.y;
+               list[id].is_moving = false;
+               // Check if this was the last tile
+               if(list[id].my_path.currPoint>=list[id].my_path.numPoints){
+                  list[id].state = IDLE;
+               }
+            }
+      }
+   }
+   mobVisibleUpdate();
+   // Job's Done!
+   return;
+}
 /*
  * Process all updates for mobs
- */
+ */ 
 void mobUpdate(int delta){
    // Get a reference to the mob list
    struct mob* list = levelStack.floors[levelStack.currentFloor]->mobs;
@@ -206,83 +556,8 @@ void mobUpdate(int delta){
          if(!isValidMove(list[id].location.x, list[id].location.y, new_dir)){
             continue; // This mob doesn't move this tick
          }
-         switch(list[id].facing){
-            case NORTH:
-               switch(new_dir){
-                  case NORTH:
-                     break; // Moving same as initial direction, do nothing
-                  case SOUTH:
-                     list[id].rotY -= 180;
-                     break; 
-                  case EAST:
-                     list[id].rotY += 90;
-                     break;
-                  case WEST:
-                     list[id].rotY -= 90;
-                     break;
-                  default:
-                     fprintf(stderr, "ERROR: Invalid new direction for mob %d: %d\n!", id, new_dir);
-                     break;
-               }
-               break;
-            case SOUTH:
-               switch(new_dir){
-                  case NORTH:
-                     list[id].rotY -= 180;
-                     break;
-                  case SOUTH: 
-                     break; // Moving same as initial direction, do nothing
-                  case EAST:
-                     list[id].rotY -= 90;
-                     break;
-                  case WEST:
-                     list[id].rotY += 90;
-                     break;
-                  default:
-                     fprintf(stderr, "ERROR: Invalid new direction for mob %d: %d\n!", id, new_dir);
-                     break;
-               }
-               break;
-            case EAST:
-               switch(new_dir){
-                  case NORTH:
-                     list[id].rotY -= 90;
-                     break;
-                  case SOUTH:
-                     list[id].rotY += 90;
-                     break;
-                  case EAST:
-                     break; // Moving same as initial direction, do nothing
-                  case WEST:
-                     list[id].rotY -= 180;
-                     break;
-                  default:
-                     fprintf(stderr, "ERROR: Invalid new direction for mob %d: %d\n!", id, new_dir);
-                     break;
-               }
-               break;
-            case WEST:
-               switch(new_dir){
-                  case NORTH:
-                     list[id].rotY += 90;
-                     break;
-                  case SOUTH:
-                     list[id].rotY -= 90;
-                     break;
-                  case EAST:
-                     list[id].rotY -= 180;
-                     break;
-                  case WEST:
-                     break; // Moving same as initial direction, do nothing
-                  default:
-                     fprintf(stderr, "ERROR: Invalid new direction for mob %d: %d\n!", id, new_dir);
-                     break;
-               }
-               break;
-            default:
-               fprintf(stderr, "ERROR: Invalid facing direction for mob %d: %d\n!", id, list[id].facing);
-               break;
-         }
+         // Rotate mob to face the new direction
+         faceDirection(id, &list[id], new_dir);
          // Update destination location
          switch(new_dir){
             case NORTH:
@@ -332,28 +607,8 @@ void mobUpdate(int delta){
                list[id].is_moving = false;
             }
       }
-      
    }
-   // Update (Extract) our viewing frustum
-   ExtractFrustum();
-   float px, py, pz;
-   getViewPosition(&px, &py, &pz);
-   px = -px;
-   py = -py;
-   pz = -pz;
-   // Run a visible update check on each mob!
-   for(id = 0; id < listSize; id++){
-      bool inFrust = CubeInFrustum2(list[id].worldX, list[id].worldY, list[id].worldZ, 1);
-      float dist = lengthTwoPoints(list[id].worldX, list[id].worldY, list[id].worldZ, px, py, pz);
-      // Only update if we're changing status (Switching visible to not visible and vice versa)
-      if(!list[id].is_visible && inFrust && dist <= drawDist){
-         drawMesh(id);
-         list[id].is_visible = true;
-      } else if(list[id].is_visible && (!inFrust || dist > drawDist)) {
-         hideMesh(id);
-         list[id].is_visible = false;
-      }
-   }
+   mobVisibleUpdate();
    // Job's Done!
    return;
 }
@@ -483,6 +738,23 @@ void wipeWorld(){
 }
 
 /*
+ * Flag all mobs to it's their turn
+ */
+void signalMobTurn(){
+   // Get a reference to the mob list
+   struct mob* list = levelStack.floors[levelStack.currentFloor]->mobs;
+   // Get size of list
+   int listSize = levelStack.floors[levelStack.currentFloor]->mobCount;
+   // Track current id
+   int id;
+   // Iterate over all mobs
+   for(id = 0; id < listSize; id++){
+      list[id].my_turn = true;
+   }
+   return;
+}
+
+/*
  * Check if player has moved into a new tile
  */
 void turnCheck(){
@@ -497,16 +769,7 @@ void turnCheck(){
    int cZ = levelStack.floors[levelStack.currentFloor]->pz;
    // If we've moved more than 1 whole tile, mobs get a turn
    if(cX != iX || cY != iY || cZ != iZ){
-      // Get a reference to the mob list
-      struct mob* list = levelStack.floors[levelStack.currentFloor]->mobs;
-      // Get size of list
-      int listSize = levelStack.floors[levelStack.currentFloor]->mobCount;
-      // Track current id
-      int id;
-      // Iterate over all mobs
-      for(id = 0; id < listSize; id++){
-         list[id].my_turn = true;
-      }
+      signalMobTurn();
       // Save new player position
       levelStack.floors[levelStack.currentFloor]->px = iX;
       levelStack.floors[levelStack.currentFloor]->py = iY;
@@ -704,6 +967,8 @@ void buildFloor(int floorNum){
                dungeonFloor->mobs[mobID].facing = NORTH;
                dungeonFloor->mobs[mobID].is_moving = false;
                dungeonFloor->mobs[mobID].my_turn = false;
+               dungeonFloor->mobs[mobID].is_aggro = false;
+               dungeonFloor->mobs[mobID].state = IDLE;
 
                dungeonFloor->mobs[mobID].location.x = x;
                dungeonFloor->mobs[mobID].location.y = y;
@@ -868,6 +1133,8 @@ void collisionResponse() {
             // Reset position 
             setViewPosition(-oX, -oY, -oZ);
          }
+         // Flag mobs to take their turn
+         signalMobTurn();
       }
    }
    return;
@@ -1166,7 +1433,7 @@ void update() {
          // Turn check
          turnCheck();
          // Update mobs
-         mobUpdate(delta);
+         mobUpdate2(delta);
       }
    }
 }

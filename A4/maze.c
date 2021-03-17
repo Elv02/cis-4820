@@ -786,3 +786,377 @@ void rectPatternFill(struct floor* maze, struct position p1, struct position p2,
 
     return;
 }
+
+/*************************\
+ * A STAR IMPLEMENTATION *
+\*************************/
+
+// Build a path from start to finish
+struct path getPath(struct floor* f, struct position start, struct position end){
+    // Step 0 - Sanity checks
+    if(f == NULL){
+        fprintf(stderr, "ERROR: Floor reference provided for A Star is NULL!\n");
+    }
+    if(start.x < 0 || start.y < 0 || start.x > f->floorWidth || start.y > f->floorHeight){
+        fprintf(stderr, "ERROR: Start position (%d, %d) is outside floor boundaries!\n", start.x, start.y);
+    }
+    if(end.x < 0 || end.y < 0 || end.x > f->floorWidth || end.y > f->floorHeight){
+        fprintf(stderr, "ERROR: End position (%d, %d) is outside floor boundaries!\n", end.x, end.y);
+    }
+    // Step 1 - Initialize the OPEN list
+    struct HEAP open_list = initHeap();
+    // Step 2 - Initialize the CLOSED list
+    struct HEAP closed_list = initHeap();
+    // Step 2A - Put starting position onto open list
+    struct TILE* start_tile = build(f, start);
+    start_tile->f = 0;
+    start_tile->g = 0;
+    insertTile(&open_list, start_tile);
+
+    printf("Working from start position (%d %d) to end (%d %d)\n", start.x, start.y, end.x, end.y);
+
+    // Step 3 - While Open list is not empty
+    while(open_list.size>0){
+        // Step 3A - Find the tile with lowest f score and pop it off the list
+        struct TILE* q = pop(&open_list);
+        // Step 3B - Generate q's 4 successors and set parents to q
+        // <NORTH>
+        struct position npos;
+        npos = q->pos;
+        npos.y++;
+        if(posValid(f, npos) || posMatch(start, npos)){
+            // Build NODE
+            struct TILE* northTile = build(f, npos);
+            // Set parent to q
+            northTile->prev = q;
+            // Step 3B_i - If successor is goal, stop search
+            if(posMatch(npos, end)){
+                // Goal found!
+                return buildPath(start_tile, northTile);
+            }
+            // Calculate scores
+            northTile->g = q->g + 1;
+            northTile->h = hueristic(npos, end);
+            northTile->f = northTile->g + northTile->h;
+            // Step 3B_ii Check for this position in OPEN list. If exists and f score is lower, skip this successor
+            if(!betterPos(&open_list, npos, northTile->f)){
+                // Step 3B_iii Check for this position in the CLOSED list. If it exists and f score is lower, skip this successor
+                if(!betterPos(&closed_list, npos, northTile->f)){
+                    // If this is the best f score for this position we've found, add the node to the list
+                    insertTile(&open_list, northTile);
+                }
+            }
+        }
+        // <SOUTH>
+        struct position spos;
+        spos = q->pos;
+        spos.y--;
+        if(posValid(f, spos)|| posMatch(start, spos)){
+            // Build NODE
+            struct TILE* southTile = build(f, spos);
+            // Set parent to q
+            southTile->prev = q;
+            // Step 3B_i - If successor is goal, stop search
+            if(posMatch(spos, end)){
+                // Goal found!
+                return buildPath(start_tile, southTile);
+            }
+            // Calculate scores
+            southTile->g = q->g + 1;
+            southTile->h = hueristic(spos, end);
+            southTile->f = southTile->g + southTile->h;
+            // Step 3B_ii Check for this position in OPEN list. If exists and f score is lower, skip this successor
+            if(!betterPos(&open_list, spos, southTile->f)){
+                // Step 3B_iii Check for this position in the CLOSED list. If it exists and f score is lower, skip this successor
+                if(!betterPos(&closed_list, spos, southTile->f)){
+                    // If this is the best f score for this position we've found, add the node to the list
+                    insertTile(&open_list, southTile);
+                }
+            }
+        }
+        // <EAST>
+        struct position epos;
+        epos = q->pos;
+        epos.x++;
+        if(posValid(f, epos) || posMatch(start, epos)){
+            // Build NODE
+            struct TILE* eastTile = build(f, epos);
+            // Set parent to q
+            eastTile->prev = q;
+            // Step 3B_i - If successor is goal, stop search
+            if(posMatch(epos, end)){
+                // Goal found!
+                return buildPath(start_tile, eastTile);
+            }
+            // Calculate scores
+            eastTile->g = q->g + 1;
+            eastTile->h = hueristic(epos, end);
+            eastTile->f = eastTile->g + eastTile->h;
+            // Step 3B_ii Check for this position in OPEN list. If exists and f score is lower, skip this successor
+            if(!betterPos(&open_list, epos, eastTile->f)){
+                // Step 3B_iii Check for this position in the CLOSED list. If it exists and f score is lower, skip this successor
+                if(!betterPos(&closed_list, epos, eastTile->f)){
+                    // If this is the best f score for this position we've found, add the node to the list
+                    insertTile(&open_list, eastTile);
+                }
+            }
+        }
+        // <WEST>
+        struct position wpos;
+        wpos = q->pos;
+        wpos.x--;
+        if(posValid(f, wpos) || posMatch(start, wpos)){
+            // Build NODE
+            struct TILE* westTile = build(f, wpos);
+            // Set parent to q's tile
+            westTile->prev = q;
+            // Step 3B_i - If successor is goal, stop search
+            if(posMatch(wpos, end)){
+                // Goal found!
+                return buildPath(start_tile, westTile);
+            }
+            // Calculate scores
+            westTile->g = q->g + 1;
+            westTile->h = hueristic(epos, end);
+            westTile->f = westTile->g + westTile->h;
+            // Step 3B_ii Check for this position in OPEN list. If exists and f score is lower, skip this successor
+            if(!betterPos(&open_list, wpos, westTile->f)){
+                // Step 3B_iii Check for this position in the CLOSED list. If it exists and f score is lower, skip this successor
+                if(!betterPos(&closed_list, wpos, westTile->f)){
+                    // If this is the best f score for this position we've found, add the node to the list
+                    insertTile(&open_list, westTile);
+                }
+            }
+        }
+        // Step 3E - Push q onto the closed list
+        insertTile(&closed_list, q);
+    }
+}
+
+// Build a path list from start to finish
+struct path buildPath(struct TILE* start, struct TILE* end){
+    // Setup path
+    struct path toRet;
+    struct TILE* t = end;
+    // Traverse backwards once to get size of path
+    int size = 0;
+    while(t != NULL){
+        size++;
+        t = t->prev;
+    }
+    // Allocate path
+    toRet.points = malloc(sizeof(struct position)*size);
+    toRet.numPoints = size;
+    // Traverse backwards second time to build path (in reverse)
+    int i = toRet.numPoints - 1;
+    t = end;
+    while(i >= 0){
+        toRet.points[i--] = t->pos;
+        t = t->prev;
+    }
+    toRet.currPoint = 0;
+    return toRet;
+}
+
+// Initialize minHeap
+struct HEAP initHeap(){
+    struct HEAP h;
+    h.size = 0;
+    return h;
+}
+
+// Sorted insertion into minHeap
+void insertTile(struct HEAP* heap, struct TILE* data){
+    // Sanity check
+    if(heap->size > 0){
+        heap->nodes = realloc(heap->nodes, (heap->size + 1) * sizeof(NODE));
+    } else {
+        heap->nodes = malloc(sizeof(NODE));
+    }
+    // Init data
+    struct NODE toAdd;
+    toAdd.t = data;
+
+    // Insert to the right
+    int i = (heap->size)++;
+    while(i > 0 && toAdd.t->f < heap->nodes[PARENT(i)].t->f){
+        heap->nodes[i] = heap->nodes[PARENT(i)];
+        i = PARENT(i);
+    }
+    heap->nodes[i] = toAdd;
+    return;
+}
+
+// Swap two nodes in the heap
+void swap(struct NODE* a, struct NODE* b){
+    struct NODE t = *a;
+    *a = *b;
+    *b = t;
+    return;
+}
+
+// Recursively sort out the heap
+void heapify(struct HEAP* heap, int i){
+    int smallest;
+    if(LCHILD(i) < heap->size && heap->nodes[LCHILD(i)].t->f < heap->nodes[i].t->f){
+        smallest = LCHILD(i);
+    } else {
+        smallest = i;
+    }
+    if(RCHILD(i) < heap->size && heap->nodes[RCHILD(i)].t->f < heap->nodes[smallest].t->f){
+        smallest = RCHILD(i);
+    }
+    if(smallest != i){
+        swap(&(heap->nodes[i]), &(heap->nodes[smallest]));
+        heapify(heap, smallest);
+    }
+    return;
+}
+
+// Pop the head off the heap
+struct TILE* pop(struct HEAP* heap){
+    if(heap->size <= 0){
+        fprintf(stderr, "ERROR: Cannot pop from an empty heap!!\n");
+    } 
+    struct TILE* toRet = heap->nodes[0].t;
+    heap->nodes[0] = heap->nodes[--(heap->size)];
+    heap->nodes = realloc(heap->nodes, heap->size * sizeof(NODE));
+    heapify(heap, 0);
+    return toRet;
+}
+
+// Clear memory
+void delHeap(struct HEAP* h){
+    if(h) free(h->nodes);
+    return;
+}
+
+// Check list for a node with a given position and compare against f score.
+// If it exists and f score is higher than provided, returns true otherwise false.
+bool betterPos(struct HEAP* heap, struct position p, int f){
+    int i;
+    for(i = 0; i < heap->size; i++){
+        if(posMatch(heap->nodes[i].t->pos, p) && f < heap->nodes[i].t->f){
+            return true;
+        }
+    }
+    return false;
+}
+
+// Check if a position is within the floor bounds
+bool posValid(struct floor* f, struct position p){
+    if(p.x < 0 || p.y < 0 || p.x > f->floorWidth || p.y > f->floorHeight){
+        return false;
+    } else {
+        return positionClear(f, p);
+    }
+}
+
+// Check if 2 positions are equal
+bool posMatch(struct position a, struct position b){
+    if(a.x == b.x && a.y == b.y) return true;
+    return false;
+}
+
+// Hueristic calculation to get distance to goal
+int hueristic(struct position p, struct position goal){
+    float toRet;
+    toRet = sqrt(pow(p.x - goal.x, 2) + pow(p.y - goal.y, 2));
+    return (int)toRet;
+}
+
+// Build tile struct from world position data
+struct TILE* build(struct floor* f, struct position p){
+    // Sanity checks
+    if(!posValid){
+        fprintf(stderr, "ERROR: Cannot build TILE struct at position (%d, %d)! Out of bounds!\n", p.x, p.y);
+        return NULL;
+    }
+    struct TILE* toRet = malloc(sizeof(struct TILE));
+    if(toRet == NULL){
+        fprintf(stderr, "ERROR: Could not allocate tile for position (%d, %d)!\n", p.x, p.y);
+        return NULL;
+    }
+    // Check if tile is 'walkable'
+    if(positionClear(f, p)){
+        toRet->traversable = true;
+        toRet->f = 0;
+    } else {
+        toRet->traversable = false;
+        toRet->f = __INT_MAX__;
+    }
+    toRet->pos = p;
+    toRet->prev = NULL;
+    return toRet;
+}
+
+bool positionClear(struct floor* maze, struct position p){
+    char lvlCheck = maze->floorData[p.x][p.y];
+    char entCheck = maze->floorEntities[p.x][p.y];
+    switch(lvlCheck){
+        case '#':
+        case ' ': // The void
+            return false;
+        default:
+            break;
+    }
+    switch(entCheck){
+        case 'C':
+        case 'B':
+        case 'F':
+        case '$':
+        case 'U':
+        case 'D':
+            return false;
+        default:
+            break;
+    }
+    return true;
+}
+
+struct position getRoomAtPosition(struct floor* maze, struct position p){
+    int x, y;
+    struct position toRet;
+    toRet.x = -1;
+    toRet.y = -1;
+    for(y = 0; y <= 2; y++){
+        for(x = 0; x <= 2; x++){
+            if(maze->rooms[x][y].origin.x < p.x && maze->rooms[x][y].origin.y < p.y && maze->rooms[x][y].corner.x > p.x && maze->rooms[x][y].corner.y > p.y){
+                toRet.x = x;
+                toRet.y = y;
+            }
+        }
+    }
+    return toRet;
+}
+
+struct position randPosInSameRoom(struct floor* maze, struct position p){
+    struct position rmPos;
+    rmPos = getRoomAtPosition(maze, p);
+    struct position toRet;
+    // If we're not in a room return a position in the floor
+    if(rmPos.x == -1 && rmPos.y == -1){
+        return randPosInFloor(maze);
+    } else {
+        while(true){
+            toRet.x = randRange(maze->rooms[rmPos.x][rmPos.y].origin.x + 1, maze->rooms[rmPos.x][rmPos.y].corner.x - 1);
+            toRet.y = randRange(maze->rooms[rmPos.x][rmPos.y].origin.y + 1, maze->rooms[rmPos.x][rmPos.y].corner.y - 1);
+            if(positionClear(maze, toRet)){
+                break;
+            }
+        }
+    }
+    return toRet;
+}
+
+struct position randPosInFloor(struct floor* maze){
+    struct position toRet;
+    while(true){
+        toRet.x = randRange(1, maze->floorWidth - 1);
+        toRet.y = randRange(1, maze->floorHeight - 1);
+        if(positionClear(maze, toRet)){
+            break;
+        }
+    }
+    return toRet;
+}

@@ -3,6 +3,26 @@
 // Toggle debug printing (0 to enable, non zero to disable)
 #define DEBUG 1
 
+// Shortcuts for accessing heap children and parent
+#define LCHILD(x) 2 * x + 1
+#define RCHILD(x) 2 * x + 2
+#define PARENT(x) (x - 1) / 2
+
+// Min heaps for our open and closed lists
+struct HEAP{
+    int size;
+    struct NODE* nodes;
+} HEAP;
+
+/*
+ * Basic path struct for A*
+ */
+struct path {
+    struct position* points;
+    int numPoints;
+    int currPoint;
+} path;
+
 /*
  * Basic struct for tracking 2d positions
  */
@@ -10,6 +30,27 @@ struct position {
     int x;
     int y;
 };
+
+// Individual tile nodes in the graph
+struct TILE{
+    // Check whether this tile can be traversed
+    bool traversable;
+
+    // Tile costs
+    int g; // Cost to get to this tile so far from start
+    int h; // Heuristic cost (distance to goal)
+    int f; // Total cost (g + h)
+
+    // Position of the current tile
+    struct position pos;
+    // Tile we came from (for building path)
+    struct TILE* prev;
+} TILE;
+
+// Linked list node
+struct NODE{
+    struct TILE* t;
+} NODE;
 
 /*
  * Direction a hallway will be connected in (E.g. N_S is north to south)
@@ -19,7 +60,12 @@ enum hallway_direction{N_S, E_W, S_N, W_E};
 /*
  * Travel state for mobs
  */
-enum direction{NORTH, SOUTH, EAST, WEST, IDLE};
+enum direction{NORTH, SOUTH, EAST, WEST};
+
+/*
+ * Active state of the mob
+ */
+enum active_status{IDLE, ROAMING, PURSUING, ATTACKING, STUCK};
 
 /*
  * Struct for storing basic entity data
@@ -29,6 +75,8 @@ struct mob {
     struct position location;
     // Position the mob is moving towards
     struct position next_location;
+    // Path the mob will follow (A*)
+    struct path my_path;
     // Direction the mob is currently looking (Start north)
     int facing;
     // Track if mob is active(alive) or inactive(dead)
@@ -37,8 +85,12 @@ struct mob {
     bool is_moving;
     // Track if the mob can currently be seen by the player
     bool is_visible;
+    // Track if the mob has been spotted (aggro)
+    bool is_aggro;
     // Track if mob should take its turn
     bool my_turn;
+    // Track current mob state
+    int state;
     // Mob's symbol to draw onto the entity array
     char symbol; 
     // World coordinates for the mob
@@ -238,3 +290,71 @@ void rectDraw(struct floor* maze, struct position p1, struct position p2, char t
  * Fills in a rectangle bounded by the 2 positions (top left and bottom right) with a checker or line pattern made of 2 chars
  */
 void rectPatternFill(struct floor* maze, struct position p1, struct position p2, char c1, char c2);
+
+/***********************************\
+ * A STAR IMPLEMENTATION FUNCTIONS *
+\***********************************/
+
+/*
+ * MinHeap Implementation is referenced from:
+ * https://robin-thomas.github.io/min-heap/
+ */
+
+// Get a path from start to finish
+struct path getPath(struct floor* f, struct position start, struct position end);
+
+// Initialize minHeap
+struct HEAP initHeap();
+
+// Sorted insertion into minHeap
+void insertTile(struct HEAP* heap, struct TILE* toAdd);
+
+// Swap to nodes in the heap
+void swap(struct NODE* a, struct NODE* b);
+
+// Recursively sort out the heap
+void heapify(struct HEAP* heap, int i);
+
+// Pop the head off the heap
+struct TILE* pop(struct HEAP* heap);
+
+// Clear memory
+void delHeap(struct HEAP* h);
+
+// Check list for a node with a given position and compare against f score.
+// If it exists and f score is higher than provided, returns true otherwise false.
+bool betterPos(struct HEAP* heap, struct position p, int f);
+
+// Check if a position is within the floor bounds
+bool posValid(struct floor* f, struct position p);
+
+// Check if 2 positions are equal
+bool posMatch(struct position a, struct position b);
+
+// Hueristic calculation to get distance to goal
+int hueristic(struct position p, struct position goal);
+
+// Build a path list from start to finish
+struct path buildPath(struct TILE* start, struct TILE* end);
+
+// Build tile struct from world position data
+struct TILE* build(struct floor* f, struct position p);
+
+/*
+ * Returns true if a given position at the specified floor has no entities or obstructions
+ */
+bool positionClear(struct floor* maze, struct position p);
+
+/*
+ * Given a floor position, return the room coordinate [0,0] through [2,2] or [-1,-1] if its not in a room
+ */
+struct position getRoomAtPosition(struct floor* maze, struct position p);
+/*
+ * Given a position, find a random position in the same room
+ * If not in a room, return a random position from the floor
+ */
+struct position randPosInSameRoom(struct floor* maze, struct position p);
+/*
+ * Get a random valid position in the floor
+ */
+struct position randPosInFloor(struct floor* maze);

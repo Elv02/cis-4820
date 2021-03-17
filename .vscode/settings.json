@@ -1,6 +1,7 @@
 {
     "C_Cpp.errorSquiggles": "Disabled",
     "files.associations": {
-        "perlin.h": "c"
+        "perlin.h": "c",
+        "time.h": "c"
     }
 }
