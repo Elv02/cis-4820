@@ -397,11 +397,6 @@ void mobVisibleUpdate(){
          list[id].is_visible = true;
          if(!list[id].is_aggro){
             list[id].is_aggro = true;
-            list[id].state = PURSUING;
-            struct position player;
-            player.x = px;
-            player.y = py;
-            list[id].my_path = aStar(levelStack.floors[levelStack.currentFloor], list[id].location, player);
          }
       } else if(list[id].is_visible && (!inFrust || dist > drawDist)) {
          hideMesh(id);
@@ -793,6 +788,7 @@ void buildFloor(int floorNum){
    struct floor* dungeonFloor; 
 
    int i, x, y;
+   bool newFloor = false;
    int ceilHeight;
    int drawHeight = 25; // World draw height (starting)
    // Disable fleight 
@@ -800,6 +796,7 @@ void buildFloor(int floorNum){
 
    // Check if we are hitting a new floor
    if(levelStack.maxFloors < floorNum + 1){
+      newFloor = true;
       levelStack.maxFloors++;
       levelStack.floors = realloc(levelStack.floors, sizeof(struct floor*) * levelStack.maxFloors);
       if(floorNum == 0){
@@ -918,7 +915,35 @@ void buildFloor(int floorNum){
 
       // Track MobIDs
       int mobID = 0;
-      // Next iterate over the entity list (For now just player placement & boxes)
+      // If we've been here before reload all active mob meshes
+      if(!newFloor){
+         for(mobID = 0; mobID < dungeonFloor->mobCount; mobID++){
+            if(dungeonFloor->mobs[mobID].is_active){
+               float mobx, moby, mobz;
+               int toLoad;
+               mobx = dungeonFloor->mobs[mobID].worldX;
+               moby = dungeonFloor->mobs[mobID].worldY;
+               mobz = dungeonFloor->mobs[mobID].worldZ;
+               switch(dungeonFloor->mobs[mobID].symbol){
+                  case 'C':
+                     toLoad = 3;
+                     break;
+                  case 'B':
+                     toLoad = 2;
+                     break;
+                  case 'F':
+                     toLoad = 1;
+                     break;
+                  default:
+                     toLoad = 0; // Load the cow in event of an error
+                     break;
+               }
+               setMeshID(mobID, toLoad, mobx, moby, mobz);
+               setScaleMesh(mobID, 0.25);
+            }
+         }
+      }
+      // Next iterate over the entity list
       for(y = 0; y < dungeonFloor->floorHeight; y++){
          for(x = 0; x < dungeonFloor->floorWidth; x++){
             char entity = dungeonFloor->floorEntities[x][y];
@@ -939,7 +964,8 @@ void buildFloor(int floorNum){
                world[x][drawHeight+1][y] = USTAIRS_ID; // Draw a upward staircase
             } else if(entity=='D'){
                world[x][drawHeight+1][y] = DSTAIRS_ID; // Draw a downward staircase
-            } else if(entity=='C' || entity=='B' || entity=='F'){
+            // Load up mobs only for a new floor (Otherwise restored earlier from mob list)
+            } else if((entity=='C' || entity=='B' || entity=='F') && newFloor){
                int toLoad;
                switch(entity){
                   case 'C':
