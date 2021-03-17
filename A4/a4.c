@@ -295,58 +295,51 @@ void cactusTurn(int id, struct mob *m){
  * Turn logic for the fish
  */
 void fishTurn(int id, struct mob *m){
-   if(isPlayerAttackable(m->location) && m->is_aggro){
-      m->state = ATTACKING;
-   }
    switch(m->state){
       case IDLE:
-         if(m->is_aggro){
-            struct position playerPos;
-            playerPos.x = -levelStack.floors[levelStack.currentFloor]->px;
-            playerPos.y = -levelStack.floors[levelStack.currentFloor]->pz;
-            m->my_path = getPath(levelStack.floors[levelStack.currentFloor], m->location, playerPos);
+         if(isPlayerAttackable(m->location) && m->is_aggro){
+            m->state = ATTACKING;
+         } else if(m->is_aggro){
             m->state = PURSUING;
          } else {
-            struct position toGo = randPosInSameRoom(levelStack.floors[levelStack.currentFloor], m->location);
-            m->my_path = getPath(levelStack.floors[levelStack.currentFloor], m->location, toGo);
             m->state = ROAMING;
          }
          break;
       case ROAMING:
-         if(m->my_path.numPoints <=0 || m->my_path.currPoint >= m->my_path.numPoints){
+         if(m->my_path == NULL || m->my_path->numPoints <=0 || m->my_path->currPoint >= m->my_path->numPoints){
             struct position toGo = randPosInSameRoom(levelStack.floors[levelStack.currentFloor], m->location);
-            m->my_path = getPath(levelStack.floors[levelStack.currentFloor], m->location, toGo);
+            m->my_path = aStar(levelStack.floors[levelStack.currentFloor], m->location, toGo);
          } 
-         if(m->my_path.currPoint < m->my_path.numPoints){
+         if(m->my_path->currPoint < m->my_path->numPoints){
             m->is_moving = true;
-            m->destX = m->my_path.points[m->my_path.currPoint].x + 0.5;
+            m->destX = m->my_path->points[m->my_path->currPoint].x + 0.5;
             m->destY = m->worldY;
-            m->destZ = m->my_path.points[m->my_path.currPoint].y + 0.5;
-            m->next_location.x = m->my_path.points[m->my_path.currPoint].x;
-            m->next_location.y = m->my_path.points[m->my_path.currPoint].y;
-            m->my_path.currPoint++;
+            m->destZ = m->my_path->points[m->my_path->currPoint].y + 0.5;
+            m->next_location.x = m->my_path->points[m->my_path->currPoint].x;
+            m->next_location.y = m->my_path->points[m->my_path->currPoint].y;
+            m->my_path->currPoint++;
          }
          break;
-      case PURSUING:
-         if(m->my_path.numPoints <=0 || m->my_path.currPoint >= m->my_path.numPoints){
-            struct position playerPos;
-            playerPos.x = -levelStack.floors[levelStack.currentFloor]->px;
-            playerPos.y = -levelStack.floors[levelStack.currentFloor]->pz;
-            m->my_path = getPath(levelStack.floors[levelStack.currentFloor], m->location, playerPos);
+      case PURSUING:;
+         struct position playerPos;
+         playerPos.x = -(levelStack.floors[levelStack.currentFloor]->px);
+         playerPos.y = -(levelStack.floors[levelStack.currentFloor]->pz);
+         int stepsToPlayer = hueristic(playerPos, m->location);
+         if(stepsToPlayer < 16 || m->my_path == NULL || m->my_path->numPoints <=0 || m->my_path->currPoint >= m->my_path->numPoints){
+            m->my_path = aStar(levelStack.floors[levelStack.currentFloor], m->location, playerPos);
          } 
-         if(m->my_path.currPoint < m->my_path.numPoints){
+         if(m->my_path->currPoint < m->my_path->numPoints){
             m->is_moving = true;
-            m->destX = m->my_path.points[m->my_path.currPoint].x + 0.5;
+            m->destX = m->my_path->points[m->my_path->currPoint].x + 0.5;
             m->destY = m->worldY;
-            m->destZ = m->my_path.points[m->my_path.currPoint].y + 0.5;
-            m->next_location.x = m->my_path.points[m->my_path.currPoint].x;
-            m->next_location.y = m->my_path.points[m->my_path.currPoint].y;
-            m->my_path.currPoint++;
+            m->destZ = m->my_path->points[m->my_path->currPoint].y + 0.5;
+            m->next_location.x = m->my_path->points[m->my_path->currPoint].x;
+            m->next_location.y = m->my_path->points[m->my_path->currPoint].y;
+            m->my_path->currPoint++;
          }
          break;
       case ATTACKING:
          attackPlayer(id, m);
-         m->state = IDLE;
          break;
       case STUCK:
          // Recalculate path based on state
@@ -404,6 +397,11 @@ void mobVisibleUpdate(){
          list[id].is_visible = true;
          if(!list[id].is_aggro){
             list[id].is_aggro = true;
+            list[id].state = PURSUING;
+            struct position player;
+            player.x = px;
+            player.y = py;
+            list[id].my_path = aStar(levelStack.floors[levelStack.currentFloor], list[id].location, player);
          }
       } else if(list[id].is_visible && (!inFrust || dist > drawDist)) {
          hideMesh(id);
@@ -522,8 +520,17 @@ void mobUpdate2(int delta){
                list[id].location.y = list[id].next_location.y;
                list[id].is_moving = false;
                // Check if this was the last tile
-               if(list[id].my_path.currPoint>=list[id].my_path.numPoints){
-                  list[id].state = IDLE;
+               if(list[id].my_path != NULL){
+                  if(list[id].my_path->currPoint>=list[id].my_path->numPoints){
+                     if(list[id].is_aggro){
+                        list[id].state = PURSUING;
+                     } else {
+                        list[id].state = ROAMING;
+                     }
+                     free(list[id].my_path->points);
+                     free(list[id].my_path);
+                     list[id].my_path = NULL;
+                  }
                }
             }
       }
@@ -969,6 +976,7 @@ void buildFloor(int floorNum){
                dungeonFloor->mobs[mobID].my_turn = false;
                dungeonFloor->mobs[mobID].is_aggro = false;
                dungeonFloor->mobs[mobID].state = IDLE;
+               dungeonFloor->mobs[mobID].my_path = NULL; // Start w/ no path
 
                dungeonFloor->mobs[mobID].location.x = x;
                dungeonFloor->mobs[mobID].location.y = y;
@@ -1161,7 +1169,7 @@ void draw2D() {
    GLfloat darkbrown[] = {0.4, 0.2, 0.0, 0.5};
    GLfloat yellow[] = {0.5, 0.5, 0.0, 0.5};
    GLfloat blue[] = {0.0, 0.0, 0.6, 0.75};
-   GLfloat darkblue[] = {0.0, 0.0, 0.2, 0.5};
+   GLfloat darkblue[] = {0.0, 0.0, 0.2, 0.33};
    GLfloat red[] = {0.5, 0.0, 0.0, 0.75};
    GLfloat pink[] = {1.0, 0.40, 0.79, 0.75}; 
    GLfloat purple[] = {0.5, 0.1, 1.0, 0.75};
@@ -1250,6 +1258,17 @@ void draw2D() {
             mz = mobs[id].worldZ;
             // Draw at mob location
             draw2Dbox((mx - 0.5) * xStep, (mz - 0.5) * yStep, (mx + 0.5) * xStep, (mz + 0.5) * yStep);
+            // Check if mob has path
+            if(mobs[id].my_path != NULL){
+               int i;
+               set2Dcolour(darkblue);
+               for(i = 0; i < mobs[id].my_path->numPoints; i++){
+                  float tx, ty;
+                  tx = mobs[id].my_path->points[i].x;
+                  ty = mobs[id].my_path->points[i].y;
+                  draw2Dbox((tx) * xStep, (ty) * yStep, (tx + 1) * xStep, (ty + 1) * yStep);
+               }
+            }
          }
 
          // Iterate over the whole map

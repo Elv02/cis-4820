@@ -11,7 +11,7 @@
 // Min heaps for our open and closed lists
 struct HEAP{
     int size;
-    struct NODE* nodes;
+    struct TILE* nodes;
 } HEAP;
 
 /*
@@ -35,6 +35,8 @@ struct position {
 struct TILE{
     // Check whether this tile can be traversed
     bool traversable;
+    // Flag if tile has been fully processed
+    bool isClosed;
 
     // Tile costs
     int g; // Cost to get to this tile so far from start
@@ -43,14 +45,9 @@ struct TILE{
 
     // Position of the current tile
     struct position pos;
-    // Tile we came from (for building path)
-    struct TILE* prev;
+    // Position of the previous tile
+    struct position prev;
 } TILE;
-
-// Linked list node
-struct NODE{
-    struct TILE* t;
-} NODE;
 
 /*
  * Direction a hallway will be connected in (E.g. N_S is north to south)
@@ -76,7 +73,7 @@ struct mob {
     // Position the mob is moving towards
     struct position next_location;
     // Path the mob will follow (A*)
-    struct path my_path;
+    struct path* my_path;
     // Direction the mob is currently looking (Start north)
     int facing;
     // Track if mob is active(alive) or inactive(dead)
@@ -299,9 +296,14 @@ void rectPatternFill(struct floor* maze, struct position p1, struct position p2,
  * MinHeap Implementation is referenced from:
  * https://robin-thomas.github.io/min-heap/
  */
+// Initializes the AStar map and returns it
+struct TILE** initTileMap(struct floor* f);
+
+// Generate successors for a given tile
+void genSuccessors(struct HEAP* heap, struct TILE** tileMap, struct TILE* origin);
 
 // Get a path from start to finish
-struct path getPath(struct floor* f, struct position start, struct position end);
+struct path* aStar(struct floor* f, struct position start, struct position end);
 
 // Initialize minHeap
 struct HEAP initHeap();
@@ -310,7 +312,7 @@ struct HEAP initHeap();
 void insertTile(struct HEAP* heap, struct TILE* toAdd);
 
 // Swap to nodes in the heap
-void swap(struct NODE* a, struct NODE* b);
+void swap(struct TILE* a, struct TILE* b);
 
 // Recursively sort out the heap
 void heapify(struct HEAP* heap, int i);
@@ -322,8 +324,8 @@ struct TILE* pop(struct HEAP* heap);
 void delHeap(struct HEAP* h);
 
 // Check list for a node with a given position and compare against f score.
-// If it exists and f score is higher than provided, returns true otherwise false.
-bool betterPos(struct HEAP* heap, struct position p, int f);
+// If it exists and f score is lower than provided, returns true otherwise false.
+bool skipPos(struct HEAP* heap, struct position p, int f);
 
 // Check if a position is within the floor bounds
 bool posValid(struct floor* f, struct position p);
@@ -335,10 +337,7 @@ bool posMatch(struct position a, struct position b);
 int hueristic(struct position p, struct position goal);
 
 // Build a path list from start to finish
-struct path buildPath(struct TILE* start, struct TILE* end);
-
-// Build tile struct from world position data
-struct TILE* build(struct floor* f, struct position p);
+struct path* buildPath(struct TILE** tileMap, struct TILE* start, struct TILE* end);
 
 /*
  * Returns true if a given position at the specified floor has no entities or obstructions
