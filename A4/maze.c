@@ -28,6 +28,7 @@ struct floor* initMaze(int floorWidth, int floorHeight, bool isOutdoors){
     toRet->floorWidth = floorWidth;
     toRet->floorHeight = floorHeight;
     toRet->mobCount = 0; // Start with 0 mobs
+    toRet->drawDist = 0.0; // Start with 0 draw dist
 
     // Allocate floor data
     toRet->floorData = (char**)malloc(toRet->floorWidth * sizeof(char*));
@@ -347,6 +348,10 @@ void genRoom(struct floor* maze, int x, int y){
     // Pick a location for the opposite corner
     toAdd.corner.x = randRange(toAdd.origin.x + 5, rightBorder - 2);
     toAdd.corner.y = randRange(toAdd.origin.y + 5, bottomBorder - 2);
+
+    // Get the size of the room and compare against current draw dist
+    float size = sqrt(pow(toAdd.origin.x - toAdd.corner.x, 2) + pow(toAdd.origin.y - toAdd.corner.y, 2));
+    if(size > maze->drawDist) maze->drawDist = size;
 
     // Fill in the floor
     rectPatternFill(maze, toAdd.origin, toAdd.corner, '.', ',');
@@ -1100,6 +1105,7 @@ int hueristic(struct position p, struct position goal){
 bool positionClear(struct floor* maze, struct position p){
     char lvlCheck = maze->floorData[p.x][p.y];
     char entCheck = maze->floorEntities[p.x][p.y];
+    // Check geometry
     switch(lvlCheck){
         case '#':
         case ' ': // The void
@@ -1107,16 +1113,23 @@ bool positionClear(struct floor* maze, struct position p){
         default:
             break;
     }
+    // Check entities
     switch(entCheck){
-        case 'C':
-        case 'B':
-        case 'F':
         case '$':
         case 'U':
         case 'D':
             return false;
         default:
             break;
+    }
+    // Check active mobs
+    int id;
+    for(id = 0; id < maze->mobCount; id++){
+        if(!maze->mobs[id].is_active){
+            continue;
+        } else if(posMatch(maze->mobs[id].location, p)){
+            return false; // Space is occupied
+        }
     }
     return true;
 }

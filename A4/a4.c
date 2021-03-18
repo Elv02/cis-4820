@@ -29,7 +29,7 @@ static int cloudHeight = 49;
    /* Time since last game tick */
 static int oldTime = 0;
    /* Draw distance for entities */
-static float drawDist = 35.0;
+static float drawDist = 35.0; // Updated per floor
 
 	/* mouse function called by GLUT when a button is pressed or released */
 void mouse(int, int, int, int);
@@ -353,6 +353,11 @@ void fishTurn(int id, struct mob *m){
          if(m->my_path == NULL || m->my_path->numPoints <=0 || m->my_path->currPoint >= m->my_path->numPoints){
             struct position toGo = randPosInSameRoom(levelStack.floors[levelStack.currentFloor], m->location);
             m->my_path = aStar(levelStack.floors[levelStack.currentFloor], m->location, toGo);
+            // Make sure we got a valid path back (can get to position)
+            if(m->my_path == NULL){
+               m->state = IDLE; // Kick into IDLE
+               break;
+            }
          } 
          if(m->my_path->currPoint < m->my_path->numPoints && clearToMove(m->my_path->points[m->my_path->currPoint])){
             m->is_moving = true;
@@ -374,6 +379,11 @@ void fishTurn(int id, struct mob *m){
          int stepsToPlayer = hueristic(playerPos, m->location);
          if(stepsToPlayer < 16 || m->my_path == NULL || m->my_path->numPoints <=0 || m->my_path->currPoint >= m->my_path->numPoints){
             m->my_path = aStar(levelStack.floors[levelStack.currentFloor], m->location, playerPos);
+            // Make sure we got a valid path back (can get to position)
+            if(m->my_path == NULL){
+               m->state = IDLE; // Kick into IDLE
+               break;
+            }
          } 
          if(m->my_path->currPoint < m->my_path->numPoints && clearToMove(m->my_path->points[m->my_path->currPoint])){
             m->is_moving = true;
@@ -422,6 +432,11 @@ void batTurn(int id, struct mob *m){
          if(m->my_path == NULL || m->my_path->numPoints <=0 || m->my_path->currPoint >= m->my_path->numPoints){
             struct position toGo = randPosInFloor(levelStack.floors[levelStack.currentFloor]);
             m->my_path = aStar(levelStack.floors[levelStack.currentFloor], m->location, toGo);
+            // Make sure we got a valid path back (can get to position)
+            if(m->my_path == NULL){
+               m->state = IDLE; // Kick into IDLE
+               break;
+            }
          } 
          if(m->my_path->currPoint < m->my_path->numPoints && clearToMove(m->my_path->points[m->my_path->currPoint])){
             m->is_moving = true;
@@ -443,6 +458,11 @@ void batTurn(int id, struct mob *m){
          int stepsToPlayer = hueristic(playerPos, m->location);
          if(stepsToPlayer < 16 || m->my_path == NULL || m->my_path->numPoints <=0 || m->my_path->currPoint >= m->my_path->numPoints){
             m->my_path = aStar(levelStack.floors[levelStack.currentFloor], m->location, playerPos);
+            // Make sure we got a valid path back (can get to player)
+            if(m->my_path == NULL){
+               m->state = IDLE; // Kick into IDLE
+               break;
+            }
          } 
          if(m->my_path->currPoint < m->my_path->numPoints && clearToMove(m->my_path->points[m->my_path->currPoint])){
             m->is_moving = true;
@@ -494,7 +514,7 @@ void mobVisibleUpdate(){
       if(!list[id].is_visible && inFrust && dist <= drawDist){
          drawMesh(id);
          list[id].is_visible = true;
-         if(!list[id].is_aggro){
+         if(!list[id].is_aggro && list[id].symbol!='F'){ // Fish does not aggro on sight, aggros when player enters their room.
             list[id].is_aggro = true;
          }
       } else if(list[id].is_visible && (!inFrust || dist > drawDist)) {
@@ -566,7 +586,7 @@ bool isValidMove(int x, int y, int dir){
 /*
  * Process all updates for mobs (UPDATED)
  */
-void mobUpdate2(int delta){
+void mobUpdate(int delta){
    // Get a reference to the mob list
    struct mob* list = levelStack.floors[levelStack.currentFloor]->mobs;
    // Get size of list
@@ -634,86 +654,6 @@ void mobUpdate2(int delta){
    return;
 }
 /*
- * Process all updates for mobs
- */ 
-void mobUpdate(int delta){
-   // Get a reference to the mob list
-   struct mob* list = levelStack.floors[levelStack.currentFloor]->mobs;
-   // Get size of list
-   int listSize = levelStack.floors[levelStack.currentFloor]->mobCount;
-   // Track current id
-   int id;
-   // Iterate over all mobs
-   for(id = 0; id < listSize; id++){
-      // Skip dead mobs
-      if(!list[id].is_active){
-         continue;
-      }
-      // Check if mob needs to take a turn
-      if(!list[id].is_moving && list[id].my_turn){
-         // Calculate a new direction, rotate mob, and update the destination coordinate
-         int new_dir = randRange(0, 3);
-         // Validate this move direction is correct
-         if(!isValidMove(list[id].location.x, list[id].location.y, new_dir)){
-            continue; // This mob doesn't move this tick
-         }
-         // Rotate mob to face the new direction
-         faceDirection(id, &list[id], new_dir);
-         // Update destination location
-         switch(new_dir){
-            case NORTH:
-               list[id].next_location.x = list[id].location.x;
-               list[id].next_location.y = list[id].location.y + 1;
-               break;
-            case SOUTH:
-               list[id].next_location.x = list[id].location.x;
-               list[id].next_location.y = list[id].location.y - 1;
-               break;
-            case EAST:
-               list[id].next_location.x = list[id].location.x + 1;
-               list[id].next_location.y = list[id].location.y;
-               break;
-            case WEST:
-               list[id].next_location.x = list[id].location.x - 1;
-               list[id].next_location.y = list[id].location.y;
-               break;
-         }
-         list[id].destX = list[id].next_location.x + 0.5;
-         list[id].destY = list[id].worldY;
-         list[id].destZ = list[id].next_location.y + 0.5;
-         // Update to new direction
-         list[id].facing = new_dir;
-         // Set mob to moving
-         list[id].is_moving = true;
-         // No longer our turn
-         list[id].my_turn = false;
-         // Apply new rotation direction
-         setRotateMesh(id, list[id].rotX, list[id].rotY, list[id].rotZ);
-         // Update entity map position
-         levelStack.floors[levelStack.currentFloor]->floorEntities[list[id].location.x][list[id].location.y] = ' ';
-         levelStack.floors[levelStack.currentFloor]->floorEntities[list[id].next_location.x][list[id].next_location.y] = list[id].symbol;
-      } else {
-         // Lerp toward our new position
-         list[id].worldX = lerp(list[id].worldX, list[id].destX, delta/25.0);
-         list[id].worldY = lerp(list[id].worldY, list[id].destY, delta/25.0);
-         list[id].worldZ = lerp(list[id].worldZ, list[id].destZ, delta/25.0);
-         // Update position
-         setTranslateMesh(id, list[id].worldX, list[id].worldY, list[id].worldZ);
-         // Check if mob has reached destination tile
-         if(list[id].worldX == list[id].destX &&
-            list[id].worldY == list[id].destY &&
-            list[id].worldZ == list[id].destZ){
-               list[id].location.x = list[id].next_location.x;
-               list[id].location.y = list[id].next_location.y;
-               list[id].is_moving = false;
-            }
-      }
-   }
-   mobVisibleUpdate();
-   // Job's Done!
-   return;
-}
-/*
  * Utility function, indicates if a specific tile is currently visible
  */
 bool isVisible(int x, int y){
@@ -748,6 +688,21 @@ void updateVisible(int x, int y){
             for(y2 = origin.y; y2 <= corner.y; y2++){
                for(x2 = origin.x; x2 <= corner.x; x2++){
                   levelStack.floors[levelStack.currentFloor]->isVisible[x2][y2] = 1;
+               }
+            }
+            // Look for a fish mob in this room and if it's not aggro'd, aggro it
+            int id;
+            struct mob* list = levelStack.floors[levelStack.currentFloor]->mobs;
+            for(id = 0; id < levelStack.floors[levelStack.currentFloor]->mobCount; id++){
+               // If mob is not active or fish type skip
+               if(!list[id].is_active || list[id].symbol!='F') continue;
+               int mx = list[id].location.x;
+               int my = list[id].location.y;
+               if(origin.x <= mx && origin.y <= my && corner.x >= mx && corner.y >= my){
+                  if(!list[id].is_aggro && list[id].symbol=='F'){
+                     list[id].is_aggro = true;
+                     list[id].state = PURSUING;
+                  }
                }
             }
             return;
@@ -913,6 +868,9 @@ void buildFloor(int floorNum){
       printf("Retrieved world of size: %d %d\n", dungeonFloor->floorWidth, dungeonFloor->floorHeight);
       printMaze(dungeonFloor);
    }
+   // Get new draw distance
+   drawDist = dungeonFloor->drawDist;
+
    // Next build the world data
 
    // Check if we're outdoors
@@ -1297,8 +1255,11 @@ void draw2D() {
    GLfloat blue[] = {0.0, 0.0, 0.6, 0.75};
    GLfloat darkblue[] = {0.0, 0.0, 0.2, 0.33};
    GLfloat red[] = {0.5, 0.0, 0.0, 0.75};
+   GLfloat lightred[] = {0.5, 0.0, 0.0, 0.25};
    GLfloat pink[] = {1.0, 0.40, 0.79, 0.75}; 
+   GLfloat lightpink[] = {1.0, 0.40, 0.79, 0.25}; 
    GLfloat purple[] = {0.5, 0.1, 1.0, 0.75};
+   GLfloat lightpurple[] = {0.5, 0.1, 1.0, 0.25};
    GLfloat white[] = {1.0, 1.0, 1.0, 0.5};
    GLfloat grey[] = {0.5, 0.5, 0.5, 0.5};
    GLfloat black[] = {0.0, 0.0, 0.0, 0.5};
@@ -1384,18 +1345,37 @@ void draw2D() {
             mz = mobs[id].worldZ;
             // Draw at mob location
             draw2Dbox((mx - 0.5) * xStep, (mz - 0.5) * yStep, (mx + 0.5) * xStep, (mz + 0.5) * yStep);
-            // Check if mob has path
-            if(mobs[id].my_path != NULL){
-               int i;
-               set2Dcolour(darkblue);
-               for(i = 0; i < mobs[id].my_path->numPoints; i++){
-                  float tx, ty;
-                  tx = mobs[id].my_path->points[i].x;
-                  ty = mobs[id].my_path->points[i].y;
-                  draw2Dbox((tx) * xStep, (ty) * yStep, (tx + 1) * xStep, (ty + 1) * yStep);
+         }
+         // If we're in full map mode draw mob paths
+         if(displayMap == 1){
+            for(id = 0; id < numMobs; id++){
+               // Check if mob has path and is active
+               if(mobs[id].my_path != NULL && mobs[id].is_active){
+                  int i;
+                  switch(mobs[id].symbol){
+                  case 'C': // Cactus
+                     set2Dcolour(lightpink);
+                     break; 
+                  case 'B': // Bat
+                     set2Dcolour(lightred);
+                     break;
+                  case 'F': // Fish
+                     set2Dcolour(lightpurple);
+                     break;
+                  default: // ERROR
+                     set2Dcolour(grey);
+                     break;
+                  }
+                  for(i = mobs[id].my_path->currPoint - 1; i < mobs[id].my_path->numPoints; i++){
+                     float tx, ty;
+                     tx = mobs[id].my_path->points[i].x;
+                     ty = mobs[id].my_path->points[i].y;
+                     draw2Dbox((tx) * xStep, (ty) * yStep, (tx + 1) * xStep, (ty + 1) * yStep);
+                  }
                }
             }
          }
+         
 
          // Iterate over the whole map
          for(y = 0; y < height; y++){
@@ -1578,7 +1558,7 @@ void update() {
          // Turn check
          turnCheck();
          // Update mobs
-         mobUpdate2(delta);
+         mobUpdate(delta);
       }
    }
 }

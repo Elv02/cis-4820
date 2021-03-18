@@ -145,6 +145,8 @@ struct floor {
     // floor size
     int floorWidth;
     int floorHeight;
+    // Max draw distance for this floor (Diagonal dist for the largest room)
+    float drawDist;
     // 3D Stair position for outdoor level
     int sx, sy, sz;
     // 3D position for player controller
