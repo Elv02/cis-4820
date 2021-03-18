@@ -150,10 +150,21 @@ bool clearToMove(struct position toCheck){
    }
    switch(entLook){
       case ' ':
-         return true;
+         break;
       default:
          return false;
    }
+   // Check active mobs (Shouldn't overlap with ourselves)
+   int id;
+   for(id = 0; id < levelStack.floors[levelStack.currentFloor]->mobCount; id++){
+      if(!levelStack.floors[levelStack.currentFloor]->mobs[id].is_active){
+         continue;
+      } else if(posMatch(levelStack.floors[levelStack.currentFloor]->mobs[id].location, toCheck) || 
+         posMatch(levelStack.floors[levelStack.currentFloor]->mobs[id].next_location, toCheck)){
+         return false; // Space is occupied
+      }
+   }
+   return true;
 }
 /*
  * Returns direction from point a to b (cardinal)
@@ -370,6 +381,9 @@ void fishTurn(int id, struct mob *m){
             // Rotate to face new direction
             int dir = dirPointToPoint(m->location, m->next_location);
             faceDirection(id, m, dir);
+         } else if(!clearToMove(m->my_path->points[m->my_path->currPoint])){
+            m->state = STUCK;
+            m->stuckCount = 0;
          }
          break;
       case PURSUING:;
@@ -377,7 +391,8 @@ void fishTurn(int id, struct mob *m){
          playerPos.x = -(levelStack.floors[levelStack.currentFloor]->px);
          playerPos.y = -(levelStack.floors[levelStack.currentFloor]->pz);
          int stepsToPlayer = hueristic(playerPos, m->location);
-         if(stepsToPlayer < 16 || m->my_path == NULL || m->my_path->numPoints <=0 || m->my_path->currPoint >= m->my_path->numPoints){
+         if(stepsToPlayer < 16 || m->my_path == NULL || m->my_path->numPoints <=0 
+            || m->my_path->currPoint >= m->my_path->numPoints || hueristic(playerPos, m->my_path->points[m->my_path->numPoints-1]) > 8){
             m->my_path = aStar(levelStack.floors[levelStack.currentFloor], m->location, playerPos);
             // Make sure we got a valid path back (can get to position)
             if(m->my_path == NULL){
@@ -396,6 +411,9 @@ void fishTurn(int id, struct mob *m){
             // Rotate to face new direction
             int dir = dirPointToPoint(m->location, m->next_location);
             faceDirection(id, m, dir);
+         } else if(!clearToMove(m->my_path->points[m->my_path->currPoint])){
+            m->state = STUCK;
+            m->stuckCount = 0;
          }
          break;
       case ATTACKING:;
@@ -404,6 +422,17 @@ void fishTurn(int id, struct mob *m){
          attackPlayer(id, m);
          break;
       case STUCK:
+         // Check if we can move 
+         if(clearToMove(m->my_path->points[m->my_path->currPoint])){
+            if(m->is_aggro) m->state = PURSUING;
+            else m->state = ROAMING;
+         } else {
+            m->stuckCount++;
+            // If we've been stuck too long (3+ turns) recalculate the path to our current goal
+            if(m->stuckCount>=2){
+               m->my_path = aStar(levelStack.floors[levelStack.currentFloor], m->location, m->my_path->points[m->my_path->numPoints-1]);
+            }
+         }
          break;
       default:
          break;
@@ -449,6 +478,9 @@ void batTurn(int id, struct mob *m){
             // Rotate to face new direction
             int dir = dirPointToPoint(m->location, m->next_location);
             faceDirection(id, m, dir);
+         } else if(!clearToMove(m->my_path->points[m->my_path->currPoint])){
+            m->state = STUCK;
+            m->stuckCount = 0;
          }
          break;
       case PURSUING:;
@@ -456,7 +488,8 @@ void batTurn(int id, struct mob *m){
          playerPos.x = -(levelStack.floors[levelStack.currentFloor]->px);
          playerPos.y = -(levelStack.floors[levelStack.currentFloor]->pz);
          int stepsToPlayer = hueristic(playerPos, m->location);
-         if(stepsToPlayer < 16 || m->my_path == NULL || m->my_path->numPoints <=0 || m->my_path->currPoint >= m->my_path->numPoints){
+         if(stepsToPlayer < 16 || m->my_path == NULL || m->my_path->numPoints <=0 
+            || m->my_path->currPoint >= m->my_path->numPoints || hueristic(playerPos, m->my_path->points[m->my_path->numPoints-1]) > 8){
             m->my_path = aStar(levelStack.floors[levelStack.currentFloor], m->location, playerPos);
             // Make sure we got a valid path back (can get to player)
             if(m->my_path == NULL){
@@ -475,6 +508,9 @@ void batTurn(int id, struct mob *m){
             // Rotate to face new direction
             int dir = dirPointToPoint(m->location, m->next_location);
             faceDirection(id, m, dir);
+         } else if(!clearToMove(m->my_path->points[m->my_path->currPoint])){
+            m->state = STUCK;
+            m->stuckCount = 0;
          }
          break;
       case ATTACKING:;
@@ -483,6 +519,17 @@ void batTurn(int id, struct mob *m){
          attackPlayer(id, m);
          break;
       case STUCK:
+         // Check if we can move
+         if(m->my_path != NULL && clearToMove(m->my_path->points[m->my_path->currPoint])){
+            if(m->is_aggro) m->state = PURSUING;
+            else m->state = ROAMING;
+         } else {
+            m->stuckCount++;
+            // If we've been stuck too long (3+ turns) recalculate the path to our current goal
+            if(m->stuckCount>=2){
+               m->my_path = aStar(levelStack.floors[levelStack.currentFloor], m->location, m->my_path->points[m->my_path->numPoints-1]);
+            }
+         }
          break;
       default:
          break;

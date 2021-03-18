@@ -88,6 +88,8 @@ struct mob {
     bool my_turn;
     // Track current mob state
     int state;
+    // Track how many turns mob has been stuck
+    int stuckCount;
     // Mob's symbol to draw onto the entity array
     char symbol; 
     // World coordinates for the mob

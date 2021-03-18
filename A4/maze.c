@@ -1123,14 +1123,14 @@ bool positionClear(struct floor* maze, struct position p){
             break;
     }
     // Check active mobs
-    int id;
+    /*int id;
     for(id = 0; id < maze->mobCount; id++){
         if(!maze->mobs[id].is_active){
             continue;
         } else if(posMatch(maze->mobs[id].location, p)){
             return false; // Space is occupied
         }
-    }
+    }*/
     return true;
 }
 
