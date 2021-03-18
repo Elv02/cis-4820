@@ -125,6 +125,46 @@ extern void drawMesh(int);
 extern void hideMesh(int);
 
 /********* end of extern variable declarations **************/
+
+/*
+ * Indicate to mob if they are OK to move to a given cell (Also opens closed doors)
+ */
+bool clearToMove(struct position toCheck){
+   char lvlLook = levelStack.floors[levelStack.currentFloor]->floorData[toCheck.x][toCheck.y];
+   char entLook = levelStack.floors[levelStack.currentFloor]->floorEntities[toCheck.x][toCheck.y];
+
+   switch(lvlLook){
+      case '/': // Closed door, lets open it!
+         world[toCheck.x][26][toCheck.y] = 0; 
+         world[toCheck.x][27][toCheck.y] = 0; 
+         levelStack.floors[levelStack.currentFloor]->floorData[toCheck.x][toCheck.y] = '|';
+      case '|':
+      case '.':
+      case ',':
+      case '+':
+         break;
+      case '#':
+         return false;
+      default:
+         return false; // Found unexpected result
+   }
+   switch(entLook){
+      case ' ':
+         return true;
+      default:
+         return false;
+   }
+}
+/*
+ * Returns direction from point a to b (cardinal)
+ */
+int dirPointToPoint(struct position a, struct position b){
+   if(a.x == b.x && a.y > b.y) return NORTH;
+   else if(a.x == b.x && a.y < b.y) return SOUTH;
+   else if(a.y == b.y && a.x < b.x) return EAST;
+   else if(a.y == b.y && a.x > b.x) return WEST;
+   else return NORTH; // Error out safely
+}
 /*
  * Return direction from current position to viewport
  */
@@ -295,11 +335,15 @@ void cactusTurn(int id, struct mob *m){
  * Turn logic for the fish
  */
 void fishTurn(int id, struct mob *m){
+   if(isPlayerAttackable(m->location) && m->is_aggro){
+      m->state = ATTACKING;
+      m->is_moving = false; // If we're attacking, we can't move into the player space.
+   } else if(m->is_aggro){
+      m->state = PURSUING;
+   }
    switch(m->state){
-      case IDLE:
-         if(isPlayerAttackable(m->location) && m->is_aggro){
-            m->state = ATTACKING;
-         } else if(m->is_aggro){
+      case IDLE: // Don't sit still
+         if(m->is_aggro){
             m->state = PURSUING;
          } else {
             m->state = ROAMING;
@@ -310,7 +354,7 @@ void fishTurn(int id, struct mob *m){
             struct position toGo = randPosInSameRoom(levelStack.floors[levelStack.currentFloor], m->location);
             m->my_path = aStar(levelStack.floors[levelStack.currentFloor], m->location, toGo);
          } 
-         if(m->my_path->currPoint < m->my_path->numPoints){
+         if(m->my_path->currPoint < m->my_path->numPoints && clearToMove(m->my_path->points[m->my_path->currPoint])){
             m->is_moving = true;
             m->destX = m->my_path->points[m->my_path->currPoint].x + 0.5;
             m->destY = m->worldY;
@@ -318,6 +362,9 @@ void fishTurn(int id, struct mob *m){
             m->next_location.x = m->my_path->points[m->my_path->currPoint].x;
             m->next_location.y = m->my_path->points[m->my_path->currPoint].y;
             m->my_path->currPoint++;
+            // Rotate to face new direction
+            int dir = dirPointToPoint(m->location, m->next_location);
+            faceDirection(id, m, dir);
          }
          break;
       case PURSUING:;
@@ -328,7 +375,7 @@ void fishTurn(int id, struct mob *m){
          if(stepsToPlayer < 16 || m->my_path == NULL || m->my_path->numPoints <=0 || m->my_path->currPoint >= m->my_path->numPoints){
             m->my_path = aStar(levelStack.floors[levelStack.currentFloor], m->location, playerPos);
          } 
-         if(m->my_path->currPoint < m->my_path->numPoints){
+         if(m->my_path->currPoint < m->my_path->numPoints && clearToMove(m->my_path->points[m->my_path->currPoint])){
             m->is_moving = true;
             m->destX = m->my_path->points[m->my_path->currPoint].x + 0.5;
             m->destY = m->worldY;
@@ -336,14 +383,17 @@ void fishTurn(int id, struct mob *m){
             m->next_location.x = m->my_path->points[m->my_path->currPoint].x;
             m->next_location.y = m->my_path->points[m->my_path->currPoint].y;
             m->my_path->currPoint++;
+            // Rotate to face new direction
+            int dir = dirPointToPoint(m->location, m->next_location);
+            faceDirection(id, m, dir);
          }
          break;
-      case ATTACKING:
+      case ATTACKING:;
+         int dir = dirToPlayer(m->location);
+         faceDirection(id, m, dir);
          attackPlayer(id, m);
          break;
       case STUCK:
-         // Recalculate path based on state
-         if(m->is_aggro)
          break;
       default:
          break;
@@ -354,14 +404,63 @@ void fishTurn(int id, struct mob *m){
  * Turn logic for the bat
  */
 void batTurn(int id, struct mob *m){
+   if(isPlayerAttackable(m->location) && m->is_aggro){
+      m->state = ATTACKING;
+      m->is_moving = false; // If we're attacking, we can't move into the player space.
+   } else if(m->is_aggro){
+      m->state = PURSUING;
+   }
    switch(m->state){
-      case IDLE:
+      case IDLE: // Don't sit still
+         if(m->is_aggro){
+            m->state = PURSUING;
+         } else {
+            m->state = ROAMING;
+         }
          break;
       case ROAMING:
+         if(m->my_path == NULL || m->my_path->numPoints <=0 || m->my_path->currPoint >= m->my_path->numPoints){
+            struct position toGo = randPosInFloor(levelStack.floors[levelStack.currentFloor]);
+            m->my_path = aStar(levelStack.floors[levelStack.currentFloor], m->location, toGo);
+         } 
+         if(m->my_path->currPoint < m->my_path->numPoints && clearToMove(m->my_path->points[m->my_path->currPoint])){
+            m->is_moving = true;
+            m->destX = m->my_path->points[m->my_path->currPoint].x + 0.5;
+            m->destY = m->worldY;
+            m->destZ = m->my_path->points[m->my_path->currPoint].y + 0.5;
+            m->next_location.x = m->my_path->points[m->my_path->currPoint].x;
+            m->next_location.y = m->my_path->points[m->my_path->currPoint].y;
+            m->my_path->currPoint++;
+            // Rotate to face new direction
+            int dir = dirPointToPoint(m->location, m->next_location);
+            faceDirection(id, m, dir);
+         }
          break;
-      case PURSUING:
+      case PURSUING:;
+         struct position playerPos;
+         playerPos.x = -(levelStack.floors[levelStack.currentFloor]->px);
+         playerPos.y = -(levelStack.floors[levelStack.currentFloor]->pz);
+         int stepsToPlayer = hueristic(playerPos, m->location);
+         if(stepsToPlayer < 16 || m->my_path == NULL || m->my_path->numPoints <=0 || m->my_path->currPoint >= m->my_path->numPoints){
+            m->my_path = aStar(levelStack.floors[levelStack.currentFloor], m->location, playerPos);
+         } 
+         if(m->my_path->currPoint < m->my_path->numPoints && clearToMove(m->my_path->points[m->my_path->currPoint])){
+            m->is_moving = true;
+            m->destX = m->my_path->points[m->my_path->currPoint].x + 0.5;
+            m->destY = m->worldY;
+            m->destZ = m->my_path->points[m->my_path->currPoint].y + 0.5;
+            m->next_location.x = m->my_path->points[m->my_path->currPoint].x;
+            m->next_location.y = m->my_path->points[m->my_path->currPoint].y;
+            m->my_path->currPoint++;
+            // Rotate to face new direction
+            int dir = dirPointToPoint(m->location, m->next_location);
+            faceDirection(id, m, dir);
+         }
          break;
-      case ATTACKING:
+      case ATTACKING:;
+         int dir = dirToPlayer(m->location);
+         faceDirection(id, m, dir);
+         attackPlayer(id, m);
          break;
       case STUCK:
          break;
@@ -993,11 +1092,12 @@ void buildFloor(int floorNum){
                dungeonFloor->mobs[mobID].worldY = moby;
                dungeonFloor->mobs[mobID].worldZ = mobz;
 
+               dungeonFloor->mobs[mobID].facing = NORTH;
                dungeonFloor->mobs[mobID].rotX = 0.0;
                dungeonFloor->mobs[mobID].rotY = 0.0;
                dungeonFloor->mobs[mobID].rotZ = 0.0;
+
                // Mob starts out not moving
-               dungeonFloor->mobs[mobID].facing = NORTH;
                dungeonFloor->mobs[mobID].is_moving = false;
                dungeonFloor->mobs[mobID].my_turn = false;
                dungeonFloor->mobs[mobID].is_aggro = false;
