@@ -1,0 +1,67 @@
+|========================|
+| Warren Hoeft (0872179) |
+|  CIS 4820 Assignment 4 |
+|       03/18/2020       |
+|========================|
+
+
+| Compilation Instructions |
+|==========================|
+
+The provided makefile is setup for Linux Libraries by default. The
+path for MACOS are also provided but is commented out.
+
+To compile the program use the makefile by executing the 'make' command
+while in the directory containing 'makefile'.  This will generate an 
+executable called 'a1'.
+
+IMPORTANT NOTE: If using another Makefile that is not the provided one,
+you *must* be sure to include the maze.c, and perlin.c in addition to the a1.c,
+graphics.c, mesh.c and visible.c files when running gcc!
+
+| Execution Instructions |
+|========================|   
+
+To run the program use '/a1'.  Optionally you may use the '-help' flag
+to see a list of available commands.
+
+| New Implementation Notes |
+|==========================|
+
+1) Mobs pathfind using the A* algorithm; and should therefore not get stuck on any level geometry/entities.
+
+2) Mobs that are aggro'd or wandering the level (bats) will open doors to get to their targets.
+
+3) When in "Full Map" mode (not Fog-of-War) enemy paths will be drawn on the map to show they are pathing toward their targets.
+
+| Mob Colours |
+|=============|
+
+Mobs have the following colours assigned on the map:
+Red -> Bat (Random Search)
+Purple -> Fish (Responsive)
+Pink -> Cactus (Plant)
+
+Lighter, more translucent variations of these colours are used to highlight current paths in full map mode.
+
+| Old Implementation Reminders |
+|==============================|
+
+1) The player will always spawn above ground within 5 blocks of the stairs block leading
+into the dungeon.
+
+2) The bonus feature of being able to open doors is still in this version.
+
+| Minor Issues |
+|==============|
+
+1) Due to the complexity of the program very rare crashes have been know to occur.  While you should not encounter any on use as I have made every effort to stamp out
+   all bugs; I would implore you to try running it one more time in the event a crash does happen.
+
+2) Mobs rotate when moving/attacking, but I did not match up some of the meshes to rotate... correctly.  Will likely fix for final (A5)
+
+| Minor Issues (NEW A5) |
+|=======================|
+
+1) Sliding against walls has been implemented, but I've noticed that the player can clip slightly into obtuse angle corners now (i.e. near doorways).
+   I have not found a remedy for this.
