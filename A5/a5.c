@@ -21,11 +21,18 @@ extern GLubyte  world[WORLDX][WORLDY][WORLDZ];
 
    /* Collection of floors for holding world data */
 static struct floor_stack levelStack;
-
+   /* Arrow projectile */
+static struct projectile arrow;
+   /* Arrow's meshID */
+static int arrowID = 99;
+   /* Static "direction" player was last moving in */
+static float dX, dY, dZ;
    /* x y coordinates offset for cloud moving */
 static float xCloudOffset, yCloudOffset;
    /* Flags to indicate if the player has grabbed the sword, bow or armour items */
 static bool hasSword, hasBow, hasArmour;
+   /* Flag to indicate if the arrow is in flight */
+static bool arrowInFlight;
    /*  Draw height for clouds */
 static int cloudHeight = 49; 
    /* Time since last game tick */
@@ -128,6 +135,70 @@ extern void hideMesh(int);
 
 /********* end of extern variable declarations **************/
 
+/*
+ * Perform all updates for the arrow projectile
+ */
+void arrowUpdate(int delta){
+   if(!arrowInFlight){
+      return;
+   } else {
+      float oX, oY, oZ, cX, cY, cZ, nX, nY, nZ;
+      float speed = 1.0005;
+      oX = arrow.currentX;
+      oY = arrow.currentY;
+      oZ = arrow.currentZ;
+      cX = arrow.nextX;
+      cY = arrow.nextY;
+      cZ = arrow.nextZ;
+      nX = cX + speed*(cX - oX);
+      nY = cY + speed*(cY - oY);
+      nZ = cZ + speed*(cZ - oZ);
+      arrow.currentX = cX;
+      arrow.currentY = cY;
+      arrow.currentZ = cZ;
+      arrow.nextX = nX;
+      arrow.nextY = nY;
+      arrow.nextZ = nZ;
+      arrow.rotX+=(float)randRange(0, 5);
+      arrow.rotY+=(float)randRange(0, 5);
+      arrow.rotZ+=(float)randRange(0, 5);
+      setTranslateMesh(arrowID, cX, cY, cZ);
+      setRotateMesh(arrowID, arrow.rotX, arrow.rotY, arrow.rotZ);
+      // Check if arrow should despawn (10 unit travel distance)
+      float dist = lengthTwoPoints(arrow.originX, arrow.originY, arrow.originZ, cX, cY, cZ);
+      if(dist >= 10.0){
+         arrowInFlight = false;
+         unsetMeshID(arrowID);
+         return;
+      } else {
+         // Check if arrow has hit anything (First world array than mob list)
+         if(world[(int)cX][(int)cY][(int)cZ] != 0){
+            arrowInFlight = false;
+            unsetMeshID(arrowID);
+            return;
+         } else {
+            struct mob* list = levelStack.floors[levelStack.currentFloor]->mobs;
+            int listSize = levelStack.floors[levelStack.currentFloor]->mobCount;
+            int id;
+            struct position toCheck;
+            toCheck.x = floor(cX);
+            toCheck.y = floor(cZ);
+            for(id = 0; id < listSize; id++){
+               if(!list[id].is_active) continue;
+               if(posMatch(toCheck, list[id].location)){
+                  printf("Mob %d succesfully pincushioned!\n", id);
+                  arrowInFlight = false;
+                  unsetMeshID(arrowID);
+                  unsetMeshID(id);
+                  list[id].is_active = false;
+                  return;
+               }
+            }
+         }
+      }
+   }
+   return;
+}
 /*
  * Indicate to mob if they are OK to move to a given cell (Also opens closed doors)
  */
@@ -1544,6 +1615,12 @@ void collisionResponse() {
    nY = y + 2*(y - oY);
    nZ = z + 2*(z - oZ);
 
+   // Make sure we're traveling in an X or Z direction (not just falling) to update our 'direction
+   if(x != oX || z != oZ){
+      dX = nX;
+      dY = nY;
+      dZ = nZ;
+   }
    // Perform collision check at the predicted space
    hit = world[(int)nX][(int)nY][(int)nZ];
 
@@ -1889,7 +1966,7 @@ void draw2D() {
                   set2Dcolour(gold);
                   break;
                case '}':
-                  // Coin
+                  // Bow
                   set2Dcolour(cyan);
                   break;
                default:
@@ -2069,9 +2146,36 @@ void update() {
 
       // Update view position
       setViewPosition(x, y, z);
-
+   
       // Perform a collision check
       collisionResponse();
+
+      // Perform bow/arrow checks
+      if(space == 1 && !arrowInFlight && hasBow){
+         // Populate our coord values
+         float cX, cY, cZ;
+         getViewPosition(&cX, &cY, &cZ);
+         cX = -cX;
+         cY = -cY;
+         cZ = -cZ;
+         space = 0;
+         arrowInFlight = true;
+         arrow.currentX = cX;
+         arrow.currentY = cY;
+         arrow.currentZ = cZ;
+         arrow.originX = cX;
+         arrow.originY = cY;
+         arrow.originZ = cZ;
+         arrow.nextX = dX;
+         arrow.nextY = cY; // Arrow's stay at the same height
+         arrow.nextZ = dZ;
+         arrow.rotX = (float)randRange(0, 360);
+         arrow.rotY = (float)randRange(0, 360);
+         arrow.rotZ = (float)randRange(0, 360);
+         setMeshID(arrowID, 18, cX, cY, cZ);
+         setRotateMesh(arrowID, arrow.rotX, arrow.rotY, arrow.rotZ);
+      }
+      arrowUpdate(delta);
 
       // Check if we're on level 0 (outdoors)
       if(levelStack.floors[levelStack.currentFloor]->floorType==OUTSIDE){
@@ -2278,6 +2382,11 @@ int i, j, k;
       hasSword = false;
       hasArmour = false;
       hasBow = false;
+
+      arrowInFlight = false;
+      dX = 1.0;
+      dY = 1.0;
+      dZ = 1.0;
 
       /* Register all our custom colours and textures */
       /* COLOURS */

@@ -24,6 +24,28 @@ struct path {
 } path;
 
 /*
+ * Struct containing all data for the arrow projectile in-game
+ */
+struct projectile{
+    // Position from where the arrow was "fired"
+    float originX;
+    float originY;
+    float originZ;
+    // Current world position of the arrow
+    float currentX;
+    float currentY;
+    float currentZ;
+    // Next world position for the arrow
+    float nextX;
+    float nextY;
+    float nextZ;
+    // Current orientatation of the arrow
+    float rotX;
+    float rotY;
+    float rotZ;
+} projectile;
+
+/*
  * Basic struct for tracking 2d positions
  */
 struct position {
