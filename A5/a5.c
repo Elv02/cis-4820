@@ -24,6 +24,8 @@ static struct floor_stack levelStack;
 
    /* x y coordinates offset for cloud moving */
 static float xCloudOffset, yCloudOffset;
+   /* Flags to indicate if the player has grabbed the sword, bow or armour items */
+static bool hasSword, hasBow, hasArmour;
    /*  Draw height for clouds */
 static int cloudHeight = 49; 
    /* Time since last game tick */
@@ -430,7 +432,13 @@ void fishTurn(int id, struct mob *m){
             m->stuckCount++;
             // If we've been stuck too long (3+ turns) recalculate the path to our current goal
             if(m->stuckCount>=2){
-               m->my_path = aStar(levelStack.floors[levelStack.currentFloor], m->location, m->my_path->points[m->my_path->numPoints-1]);
+               // If we have a valid path
+               if(m->my_path != NULL){
+                  m->my_path = aStar(levelStack.floors[levelStack.currentFloor], m->location, m->my_path->points[m->my_path->numPoints-1]);
+               } else {
+                  // Kick into IDLE, we've lost our path!
+                  m->state = IDLE;
+               }
             }
          }
          break;
@@ -527,7 +535,13 @@ void batTurn(int id, struct mob *m){
             m->stuckCount++;
             // If we've been stuck too long (3+ turns) recalculate the path to our current goal
             if(m->stuckCount>=2){
-               m->my_path = aStar(levelStack.floors[levelStack.currentFloor], m->location, m->my_path->points[m->my_path->numPoints-1]);
+               // If we have a valid path
+               if(m->my_path != NULL){
+                  m->my_path = aStar(levelStack.floors[levelStack.currentFloor], m->location, m->my_path->points[m->my_path->numPoints-1]);
+               } else {
+                  // Kick into IDLE, we've lost our path!
+                  m->state = IDLE;
+               }
             }
          }
          break;
@@ -700,12 +714,34 @@ void mobUpdate(int delta){
    // Job's Done!
    return;
 }
+
+/*
+ * Process all updates for items
+ */
+void itemUpdate(int delta){
+   // Get a reference to the item list
+   struct item* list = levelStack.floors[levelStack.currentFloor]->items;
+   // Get size of list
+   int listSize = levelStack.floors[levelStack.currentFloor]->itemCount;
+   // Track current id
+   int id;
+   // Iterate over all mobs
+   for(id = 0; id < listSize; id++){
+      // Check for rotate-able item (Coin, Sword, Key, Armour, or Bow)
+      char s = list[id].symbol;
+      if(s == '*' || s == 'S' || s == 'A' || s == 'K' || s == '}'){
+         list[id].rotY += delta/4.0;
+         setRotateMesh(list[id].meshID, list[id].rotX, list[id].rotY, list[id].rotZ);
+      }
+   }
+}
+
 /*
  * Utility function, indicates if a specific tile is currently visible
  */
 bool isVisible(int x, int y){
-   // If we're in draw all mode just return true
-   if(displayMap == 1){
+   // If we're in draw all mode or a cave just return true
+   if(displayMap == 1 || levelStack.floors[levelStack.currentFloor]->floorType==CAVE){
       return true;
    // Otherwise check against visibility array
    } else {
@@ -827,14 +863,18 @@ void wipeWorld(){
          }
       }
    }
-   // Get a reference to the mob list
-   struct mob* list = levelStack.floors[levelStack.currentFloor]->mobs;
    // Get size of list
    int listSize = levelStack.floors[levelStack.currentFloor]->mobCount;
    // Track current id
    int id;
    // Iterate over all mobs
    for(id = 0; id < listSize; id++){
+      unsetMeshID(id);
+   }
+   // Get size of list
+   listSize = levelStack.floors[levelStack.currentFloor]->mobCount + levelStack.floors[levelStack.currentFloor]->itemCount;
+   // Iterate over all items
+   for(; id < listSize; id++){
       unsetMeshID(id);
    }
    return;
@@ -852,7 +892,23 @@ void signalMobTurn(){
    int id;
    // Iterate over all mobs
    for(id = 0; id < listSize; id++){
+      // Skip deactivated mobs
+      if(!list[id].is_active) continue;
+      // Flag turn
       list[id].my_turn = true;
+      // If we're in the cave check if we're within 10 tiles of the player (and a fish)
+      if(levelStack.floors[levelStack.currentFloor]->floorType==CAVE && list[id].symbol=='F' && !list[id].is_aggro){
+         float px, py, pz;
+         getViewPosition(&px, &py, &pz);
+         px = -px;
+         py = -py;
+         pz = -pz;
+         float dist = lengthTwoPoints(list[id].worldX, list[id].worldY, list[id].worldZ, px, py, pz);
+         // Only update if we're changing status (Switching visible to not visible and vice versa)
+         if(dist <= 10){
+            list[id].is_aggro = true;
+         }
+      }
    }
    return;
 }
@@ -902,10 +958,13 @@ void buildFloor(int floorNum){
       levelStack.floors = realloc(levelStack.floors, sizeof(struct floor*) * levelStack.maxFloors);
       if(floorNum == 0){
          levelStack.floors[floorNum] = initMaze(100, 100, OUTSIDE);
+         levelStack.floors[floorNum]->stairLocked = false;
       } else if(floorNum%2==0){
          levelStack.floors[floorNum] = initMaze(100, 100, CAVE);
+         levelStack.floors[floorNum]->stairLocked = true;
       } else {
          levelStack.floors[floorNum] = initMaze(100, 100, DUNGEON);
+         levelStack.floors[floorNum]->stairLocked = true;
       }
    } 
    levelStack.currentFloor = floorNum;
@@ -967,51 +1026,231 @@ void buildFloor(int floorNum){
       world[dungeonFloor->sx][dungeonFloor->sy][dungeonFloor->sz] = DSTAIRS_ID;
    // Check if we're in a cave
    } else if(dungeonFloor->floorType==CAVE){
-      int maxHeight = 22; // Maximum height for the ceiling
-      int snowHeight = 16; // Snow occurs at 16 above base
-      int grassHeight = 8; // Grass occurs at 8 above base
-
+      // Draw 'Walls'
       for(y = 0; y < dungeonFloor->floorHeight; y++){
          for(x = 0; x < dungeonFloor->floorWidth; x++){
-            // Get the height map at this coordinate
-            int yCap = drawHeight + floor(((dungeonFloor->heightMap[x][y])*maxHeight));
-            // Draw from the top to the bottom, picking the appropriate colour as we go
-            for(i = yCap; i >= drawHeight; i--){
-               if(i >= snowHeight + drawHeight){
-                  world[x][i][y] = SNOW_ID;
-               } else if(i >= grassHeight + drawHeight && i < snowHeight + drawHeight){
-                  world[x][i][y] = GRASS_ID; 
-               } else if(i < grassHeight + drawHeight){
-                  world[x][i][y] = DIRT_ID;
+            if(y==0||y==dungeonFloor->floorHeight-1||x==0||x==dungeonFloor->floorWidth-1){
+               dungeonFloor->floorData[x][y] = '#';
+               for(i = drawHeight; i < drawHeight + 8; i++){
+                  world[x][i][y] = CAVE_CEILING_ID;
                }
             }
          }
       }
-
-      // Randomly place the stairs and player somewhere in the middle of the map if they haven't been
-      while(dungeonFloor->sx == -1){
-         // Pick a random spot
-         x = randRange(20, 80);
-         y = randRange(20, 80);
-         // Get height
-         int h = getHeight(x, y);
-
-         // Make sure the stairs are placed in a dirt covered area (Contrast)
-         if(h <= grassHeight + drawHeight){
-               // Get coordinates for stairs
-               dungeonFloor->sx = x;
-               dungeonFloor->sy = h + 1;
-               dungeonFloor->sz = y;
-               // Get coordinates for player
-               dungeonFloor->px = randRange(x - 5, x + 5);
-               dungeonFloor->pz = randRange(y - 5, y + 5);
-               dungeonFloor->py = getHeight(dungeonFloor->px, dungeonFloor->pz) + 1;
+      // Draw the ceiling
+      for(y = 0; y < dungeonFloor->floorHeight; y++){
+         for(x = 0; x < dungeonFloor->floorWidth; x++){
+            // Generate the dome
+            float tx, ty, tz;
+            tx = ((float)x/(float)(dungeonFloor->floorWidth/2)) - 1.0;
+            tz = ((float)y/(float)(dungeonFloor->floorHeight/2)) - 1.0;
+            ty = 1.0 - (pow(tx,2.0) + pow(tz, 2.0))/2.0;
+            // Offset the ceiling
+            int ceilHeight = (drawHeight) + floor(ty*16.0);
+            ceilHeight += (int)(8.0*dungeonFloor->heightMap[x][y]);
+            for(i = ceilHeight; i <= ceilHeight+5; i++){
+               world[x][i][y] = CAVE_CEILING_ID;
+               if(ceilHeight <= drawHeight + 1) 
+                  dungeonFloor->floorData[x][y] = '#';
+            }
          }
       }
-      // Put the player and stairs in
-      setViewPosition(-dungeonFloor->px - 0.5, -dungeonFloor->py - 2, -dungeonFloor->pz - 0.5);
-      setViewOrientation(0, 0, 0);
-      world[dungeonFloor->sx][dungeonFloor->sy][dungeonFloor->sz] = DSTAIRS_ID;
+      // Draw the floor
+      for(y = 0; y < dungeonFloor->floorHeight; y++){
+         for(x = 0; x < dungeonFloor->floorWidth; x++){
+            world[x][drawHeight][y] = CAVE_FLOOR_ID;
+         }
+      }
+      // Track MobIDs and ItemIDs
+      int mobID = 0;
+      int itemID = 0;
+      // If we've been here before reload all active mob and item meshes
+      if(!newFloor){
+         for(mobID = 0; mobID < dungeonFloor->mobCount; mobID++){
+            if(dungeonFloor->mobs[mobID].is_active){
+               float mobx, moby, mobz;
+               int toLoad;
+               mobx = dungeonFloor->mobs[mobID].worldX;
+               moby = dungeonFloor->mobs[mobID].worldY;
+               mobz = dungeonFloor->mobs[mobID].worldZ;
+               switch(dungeonFloor->mobs[mobID].symbol){
+                  case 'F': // We should only have fish in the cave
+                     toLoad = 1;
+                     break;
+                  default:
+                     toLoad = 0; // Load the cow in event of an error
+                     break;
+               }
+               setMeshID(mobID, toLoad, mobx, moby, mobz);
+               setScaleMesh(mobID, 0.25);
+            }
+         }
+         for(itemID = 0; itemID < dungeonFloor->itemCount; itemID++){
+            if(dungeonFloor->items[itemID].is_active){
+               float itemx, itemy, itemz;
+               int toLoad;
+               itemx = dungeonFloor->items[itemID].worldX;
+               itemy = dungeonFloor->items[itemID].worldY;
+               itemz = dungeonFloor->items[itemID].worldZ;
+               switch(dungeonFloor->items[itemID].symbol){
+                  case 'O':
+                     // Open Chest
+                     toLoad = 5;
+                     break;
+                  case 'A':
+                     // Armour
+                     toLoad = 6;
+                     break;
+                  case 'S':
+                     // Sword
+                     toLoad = 4;
+                     break;
+                  case 'K':
+                     // Key
+                     toLoad = 8;
+                     break;
+                  case '*':
+                     // Coin
+                     toLoad = 11;
+                     break;
+                  case '}':
+                     // Bow
+                     toLoad = 14;
+                     break;
+                  default:
+                     toLoad = 17; // Load the skull in event of an error
+                     break;
+               }
+               int meshID = dungeonFloor->items[itemID].meshID;
+               setMeshID(meshID, toLoad, itemx, itemy, itemz);
+               setScaleMesh(meshID, 0.5);
+            }
+         }
+      }
+      for(y = 0; y < dungeonFloor->floorHeight; y++){
+         for(x = 0; x < dungeonFloor->floorWidth; x++){
+            char entity = dungeonFloor->floorEntities[x][y];
+            // Player found! Setup at coordinates
+            if(entity=='@'){
+               if(DEBUG==0)
+                  printf("Setting player 0 at (%d, %d, %d)...\n", x, drawHeight+1, y);
+               // Setup viewport
+               setOldViewPosition(-x - 0.5, -drawHeight - 2, -y - 0.5);
+               setViewPosition(-x - 0.5, -drawHeight - 2, -y - 0.5);
+               setViewOrientation(0, 0, 0);
+               // Wipe player reference point so it can be saved when they move to a different staircase
+               dungeonFloor->floorEntities[x][y] = ' ';
+            // Box found!
+            } else if(entity=='$'){
+               world[x][drawHeight+1][y] = BOX_ID; // Draw a box
+            } else if(entity=='U'){
+               world[x][drawHeight+1][y] = USTAIRS_ID; // Draw a upward staircase
+            } else if(entity=='D'){
+               world[x][drawHeight+1][y] = DSTAIRS_ID; // Draw a downward staircase
+            // Load up mobs only for a new floor (Otherwise restored earlier from mob list)
+            } else if((entity=='C' || entity=='B' || entity=='F') && newFloor){
+               int toLoad;
+               switch(entity){
+                  case 'F': // We should only have fish in the cave
+                     toLoad = 1;
+                     break;
+                  default:
+                     toLoad = 0; // Load the cow in event of an error
+                     break;
+               }
+               // Load up a mob (mesh) at this location!
+               float mobx, moby, mobz;
+               mobx = x + 0.5;
+               moby = drawHeight + 1.5;
+               mobz = y + 0.5;
+               setMeshID(mobID, toLoad, mobx, moby, mobz);
+               setScaleMesh(mobID, 0.25);
+               // Save mob info to mob list
+               dungeonFloor->mobs[mobID].worldX = mobx;
+               dungeonFloor->mobs[mobID].worldY = moby;
+               dungeonFloor->mobs[mobID].worldZ = mobz;
+
+               dungeonFloor->mobs[mobID].facing = NORTH;
+               dungeonFloor->mobs[mobID].rotX = 0.0;
+               dungeonFloor->mobs[mobID].rotY = 0.0;
+               dungeonFloor->mobs[mobID].rotZ = 0.0;
+
+               // Mob starts out not moving
+               dungeonFloor->mobs[mobID].is_moving = false;
+               dungeonFloor->mobs[mobID].my_turn = false;
+               dungeonFloor->mobs[mobID].is_aggro = false;
+               dungeonFloor->mobs[mobID].state = IDLE;
+               dungeonFloor->mobs[mobID].my_path = NULL; // Start w/ no path
+
+               dungeonFloor->mobs[mobID].location.x = x;
+               dungeonFloor->mobs[mobID].location.y = y;
+               dungeonFloor->mobs[mobID].symbol = entity;
+               dungeonFloor->mobs[mobID].is_active = true;
+               // Wipe entity reference point (Similar to player) so we can draw float points to the map directly (Save on floor change)
+               dungeonFloor->floorEntities[x][y] = ' ';
+               // Cycle ID forward
+               mobID++;
+            // Load up items only for a new floor (Otherwise restored earlier from mob list)
+            } else if((entity=='O' || entity=='A' || entity=='S' || entity=='K' || entity=='}' || entity=='*') && newFloor){
+               int toLoad;
+               switch(entity){
+                  case 'O':
+                     // Open Chest
+                     toLoad = 5;
+                     break;
+                  case 'A':
+                     // Armour
+                     toLoad = 6;
+                     break;
+                  case 'S':
+                     // Sword
+                     toLoad = 4;
+                     break;
+                  case 'K':
+                     // Key
+                     toLoad = 8;
+                     break;
+                  case '*':
+                     // Coin
+                     toLoad = 11;
+                     break;
+                  case '}':
+                     // Bow
+                     toLoad = 14;
+                     break;
+                  default:
+                     toLoad = 17; // Load the skull in event of an error
+                     break;
+               }
+               // Load up a item (mesh) at this location!
+               float itemx, itemy, itemz;
+               itemx = x + 0.5;
+               itemy = drawHeight + 1.5;
+               itemz = y + 0.5;
+               int meshID = itemID + dungeonFloor->mobCount;
+               setMeshID(meshID, toLoad, itemx, itemy, itemz);
+               setScaleMesh(meshID, 0.5);
+               // Save mob info to mob list
+               dungeonFloor->items[itemID].meshID = meshID;
+               dungeonFloor->items[itemID].worldX = itemx;
+               dungeonFloor->items[itemID].worldY = itemy;
+               dungeonFloor->items[itemID].worldZ = itemz;
+
+               dungeonFloor->items[itemID].rotX = 0.0;
+               dungeonFloor->items[itemID].rotY = 0.0;
+               dungeonFloor->items[itemID].rotZ = 0.0;
+
+               dungeonFloor->items[itemID].location.x = x;
+               dungeonFloor->items[itemID].location.y = y;
+               dungeonFloor->items[itemID].symbol = entity;
+               dungeonFloor->items[itemID].is_active = true;
+               // Wipe entity reference point (Similar to player) so we can draw float points to the map directly (Save on floor change)
+               dungeonFloor->floorEntities[x][y] = ' ';
+               // Cycle ID forward
+               itemID++;
+            }
+         }
+      }
 
    // Otherwise we're indoors, generate the rooms etc
    } else {
@@ -1064,6 +1303,7 @@ void buildFloor(int floorNum){
 
       // Track MobIDs
       int mobID = 0;
+      int itemID = 0;
       // If we've been here before reload all active mob meshes
       if(!newFloor){
          for(mobID = 0; mobID < dungeonFloor->mobCount; mobID++){
@@ -1089,6 +1329,47 @@ void buildFloor(int floorNum){
                }
                setMeshID(mobID, toLoad, mobx, moby, mobz);
                setScaleMesh(mobID, 0.25);
+            }
+         }
+         for(itemID = 0; itemID < dungeonFloor->itemCount; itemID++){
+            if(dungeonFloor->items[itemID].is_active){
+               float itemx, itemy, itemz;
+               int toLoad;
+               itemx = dungeonFloor->items[itemID].worldX;
+               itemy = dungeonFloor->items[itemID].worldY;
+               itemz = dungeonFloor->items[itemID].worldZ;
+               switch(dungeonFloor->items[itemID].symbol){
+                  case 'O':
+                     // Open Chest
+                     toLoad = 5;
+                     break;
+                  case 'A':
+                     // Armour
+                     toLoad = 6;
+                     break;
+                  case 'S':
+                     // Sword
+                     toLoad = 4;
+                     break;
+                  case 'K':
+                     // Key
+                     toLoad = 8;
+                     break;
+                  case '*':
+                     // Coin
+                     toLoad = 11;
+                     break;
+                  case '}':
+                     // Bow
+                     toLoad = 14;
+                     break;
+                  default:
+                     toLoad = 17; // Load the skull in event of an error
+                     break;
+               }
+               int meshID = dungeonFloor->items[itemID].meshID;
+               setMeshID(meshID, toLoad, itemx, itemy, itemz);
+               setScaleMesh(meshID, 0.5);
             }
          }
       }
@@ -1162,6 +1443,64 @@ void buildFloor(int floorNum){
                dungeonFloor->floorEntities[x][y] = ' ';
                // Cycle ID forward
                mobID++;
+            // Load up items only for a new floor (Otherwise restored earlier from mob list)
+            } else if((entity=='O' || entity=='A' || entity=='S' || entity=='K' || entity=='}' || entity=='*') && newFloor){
+               int toLoad;
+               switch(entity){
+                  case 'O':
+                     // Open Chest
+                     toLoad = 5;
+                     break;
+                  case 'A':
+                     // Armour
+                     toLoad = 6;
+                     break;
+                  case 'S':
+                     // Sword
+                     toLoad = 4;
+                     break;
+                  case 'K':
+                     // Key
+                     toLoad = 8;
+                     break;
+                  case '*':
+                     // Coin
+                     toLoad = 11;
+                     break;
+                  case '}':
+                     // Bow
+                     toLoad = 14;
+                     break;
+                  default:
+                     toLoad = 17; // Load the skull in event of an error
+                     break;
+               }
+               // Load up a item (mesh) at this location!
+               float itemx, itemy, itemz;
+               itemx = x + 0.5;
+               itemy = drawHeight + 1.5;
+               itemz = y + 0.5;
+               int meshID = itemID + dungeonFloor->mobCount;
+               setMeshID(meshID, toLoad, itemx, itemy, itemz);
+               setScaleMesh(meshID, 0.5);
+               // Save mob info to mob list
+               dungeonFloor->items[itemID].worldX = itemx;
+               dungeonFloor->items[itemID].worldY = itemy;
+               dungeonFloor->items[itemID].worldZ = itemz;
+
+               dungeonFloor->items[itemID].rotX = 0.0;
+               dungeonFloor->items[itemID].rotY = 0.0;
+               dungeonFloor->items[itemID].rotZ = 0.0;
+
+               dungeonFloor->items[itemID].location.x = x;
+               dungeonFloor->items[itemID].location.y = y;
+               dungeonFloor->items[itemID].symbol = entity;
+               dungeonFloor->items[itemID].is_active = true;
+               dungeonFloor->items[itemID].meshID = meshID;
+               // Wipe entity reference point (Similar to player) so we can draw float points to the map directly (Save on floor change)
+               dungeonFloor->floorEntities[x][y] = ' ';
+               // Cycle ID forward
+               itemID++;
             }
          }
       }
@@ -1210,8 +1549,15 @@ void collisionResponse() {
 
    // Set consistent floor position if standing on solid ground
    if(world[(int)x][(int)(y-1)][(int)z] != 0){
+      // Lock Check
+      if(world[(int)x][(int)(y-1)][(int)z] == DSTAIRS_ID && levelStack.floors[levelStack.currentFloor]->stairLocked){
+         if(levelStack.floors[levelStack.currentFloor]->hasKey){
+            levelStack.floors[levelStack.currentFloor]->hasKey = false;
+            levelStack.floors[levelStack.currentFloor]->stairLocked = false;
+         }
+      }
       // Check for stairs
-      if(world[(int)x][(int)(y-1)][(int)z] == DSTAIRS_ID){
+      if(world[(int)x][(int)(y-1)][(int)z] == DSTAIRS_ID && !levelStack.floors[levelStack.currentFloor]->stairLocked){
          if(DEBUG == 0){
             printf("Going downstairs!\n");
          }
@@ -1336,6 +1682,47 @@ void collisionResponse() {
          signalMobTurn();
       }
    }
+
+   // Check if we're running into any items
+   // Get a reference to the item list
+   struct item* itemList = levelStack.floors[levelStack.currentFloor]->items;
+   // Get size of list
+   listSize = levelStack.floors[levelStack.currentFloor]->itemCount;
+   // Iterate over all items
+   for(id = 0; id < listSize; id++){
+      if(!itemList[id].is_active){
+         continue;
+      }
+      if((int)nX == itemList[id].location.x && (int)nZ == itemList[id].location.y){
+         // Check what item we're picking up
+         switch(itemList[id].symbol){
+            case 'O':
+               printf("Congratulations! You've found a box of gold!\n");
+               break;
+            case 'A':
+               hasArmour = true;
+               break;
+            case 'S':
+               hasSword = true;
+               break;
+            case 'K':
+               levelStack.floors[levelStack.currentFloor]->hasKey = true;
+               break;
+            case '*':
+               printf("Congratulations! You've found a gigantic gold coin!\n");
+               break;
+            case '}':
+               hasBow = true;
+               break;
+            default:
+               fprintf(stderr, "ERROR: Attempting to pick up unknown item %c!\n", itemList[id].symbol);
+               break;
+         }
+         // Regardless of what was picked up, it is now 'inactive'
+         itemList[id].is_active = false;
+         unsetMeshID(itemList[id].meshID);
+      }
+   }
    return;
 }
 
@@ -1349,16 +1736,14 @@ void collisionResponse() {
 	/*	set2Dcolour(float []); 				*/
 	/* colour must be set before other functions are called	*/
 void draw2D() {
-   // Check if map is going to be rendered or if we can skip
-   if(displayMap == 0){
-      return;
-   }
    // Set colours
    GLfloat green[] = {0.0, 0.6, 0.0, 0.25};
    GLfloat darkgreen[] = {0.0, 0.3, 0.0, 0.5};
    GLfloat brown[] = {0.8, 0.4, 0.0, 0.5};
    GLfloat darkbrown[] = {0.4, 0.2, 0.0, 0.5};
+   GLfloat cyan[] = {0.00, 0.72, 0.92, 0.75}; // Bow
    GLfloat yellow[] = {0.5, 0.5, 0.0, 0.5};
+   GLfloat gold[] = {1.0, 0.85, 0.0, 0.75}; // Key
    GLfloat blue[] = {0.0, 0.0, 0.6, 0.75};
    GLfloat darkblue[] = {0.0, 0.0, 0.2, 0.33};
    GLfloat red[] = {0.5, 0.0, 0.0, 0.75};
@@ -1370,6 +1755,10 @@ void draw2D() {
    GLfloat white[] = {1.0, 1.0, 1.0, 0.5};
    GLfloat grey[] = {0.5, 0.5, 0.5, 0.5};
    GLfloat black[] = {0.0, 0.0, 0.0, 0.5};
+
+   GLfloat airforceblue[] = {0.00, 0.19, 0.56, 1.0}; // Armour icon
+   GLfloat steelteal[] = {0.37, 0.54, 0.55, 1.0}; // Sword Icon
+   GLfloat amber[] = {1.00, 0.75, 0.0, 1.0}; // Key Icon
 
    if (testWorld) {
 		/* draw some sample 2d shapes */
@@ -1389,12 +1778,41 @@ void draw2D() {
       char** data = levelStack.floors[levelStack.currentFloor]->floorData;
       char** entities = levelStack.floors[levelStack.currentFloor]->floorEntities;
       struct mob* mobs = levelStack.floors[levelStack.currentFloor]->mobs;
+      struct item* items = levelStack.floors[levelStack.currentFloor]->items;
       int numMobs = levelStack.floors[levelStack.currentFloor]->mobCount;
+      int numItems = levelStack.floors[levelStack.currentFloor]->itemCount;
       int x, y, id;
 
       // Calculate offsets
       int xStep = screenWidth / width;
       int yStep = screenHeight / height;
+
+      // Draw Icons
+      if(hasSword){
+         set2Dcolour(steelteal);
+         draw2Dbox(22, 48, 26, 54);
+         draw2Dbox(16, 54, 32, 60);
+         draw2Dbox(20, 60, 28, 76);
+         draw2Dtriangle(20, 76, 24, 80, 28, 76);
+      }
+      if(hasArmour){
+         set2Dcolour(airforceblue);
+         draw2Dbox(8, 8, 40, 32);
+         draw2Dbox(8, 32, 20, 40);
+         draw2Dbox(28, 32, 40, 40);
+      }
+      if(levelStack.floors[levelStack.currentFloor]->hasKey){
+         set2Dcolour(amber);
+         draw2Dbox(screenWidth - 8, 24, screenWidth - 24, 40);
+         draw2Dbox(screenWidth - 14, 8, screenWidth - 18, 24);
+         draw2Dbox(screenWidth - 18, 8, screenWidth - 22, 12);
+         draw2Dbox(screenWidth - 18, 16, screenWidth - 22, 20);
+      }
+
+      // Check if map is going to be rendered or if we can skip
+      if(displayMap == 0){
+         return;
+      }
 
       // Draw Player (And if outdoors, stairs)
       if(displayMap == 1 || displayMap == 2){
@@ -1417,11 +1835,6 @@ void draw2D() {
             // Draw green over the whole map and return
             set2Dcolour(green);
             draw2Dbox(xStep, yStep, screenWidth - xStep, screenHeight - yStep);
-            return;
-         }
-         // Draw light grey box and entities if in a cave
-         if(floorType==CAVE){
-            // TODO: Implement radar!
             return;
          }
 
@@ -1458,36 +1871,39 @@ void draw2D() {
             // Draw at mob location
             draw2Dbox((mx - 0.5) * xStep, (mz - 0.5) * yStep, (mx + 0.5) * xStep, (mz + 0.5) * yStep);
          }
-         // If we're in full map mode draw mob paths
-         if(displayMap == 1){
-            for(id = 0; id < numMobs; id++){
-               // Check if mob has path and is active
-               if(mobs[id].my_path != NULL && mobs[id].is_active){
-                  int i;
-                  switch(mobs[id].symbol){
-                  case 'C': // Cactus
-                     set2Dcolour(lightpink);
-                     break; 
-                  case 'B': // Bat
-                     set2Dcolour(lightred);
-                     break;
-                  case 'F': // Fish
-                     set2Dcolour(lightpurple);
-                     break;
-                  default: // ERROR
-                     set2Dcolour(grey);
-                     break;
-                  }
-                  for(i = mobs[id].my_path->currPoint - 1; i < mobs[id].my_path->numPoints; i++){
-                     float tx, ty;
-                     tx = mobs[id].my_path->points[i].x;
-                     ty = mobs[id].my_path->points[i].y;
-                     draw2Dbox((tx) * xStep, (ty) * yStep, (tx + 1) * xStep, (ty + 1) * yStep);
-                  }
-               }
+
+         // Draw our items
+         for(id = 0; id < numItems; id++){
+            // Check if item is active
+            if(!items[id].is_active){
+               continue;
             }
+            // Check if we're not rendering this item (fog-of-war)
+            if(!isVisible(items[id].location.x, items[id].location.y)){
+               continue; // Skip to next mob
+            }
+            // Set colour based on mob type
+            switch(items[id].symbol){
+               case 'K':
+                  // Key
+                  set2Dcolour(gold);
+                  break;
+               case '}':
+                  // Coin
+                  set2Dcolour(cyan);
+                  break;
+               default:
+                  continue; // This is a item we're not showing on the map
+                  break;
+            }
+            // Get items location
+            float ix, iy, iz;
+            ix = items[id].worldX;
+            iy = items[id].worldY;
+            iz = items[id].worldZ;
+            // Draw at item location
+            draw2Dbox((ix - 0.5) * xStep, (iz - 0.5) * yStep, (ix + 0.5) * xStep, (iz + 0.5) * yStep);
          }
-         
 
          // Iterate over the whole map
          for(y = 0; y < height; y++){
@@ -1504,9 +1920,6 @@ void draw2D() {
                   // Open Doors
                   } else if(data[x][y] == '|'){
                      set2Dcolour(brown);
-                  // Boxes
-                  } else if(entities[x][y] == '$'){
-                     set2Dcolour(yellow);
                   // Upstairs
                   } else if(entities[x][y] == 'U'){
                      set2Dcolour(white);
@@ -1665,16 +2078,26 @@ void update() {
          // Animate clouds
          animateClouds(delta);
       } else if(levelStack.floors[levelStack.currentFloor]->floorType==CAVE){
-         // TODO: Cave specific stuff... (Mob update for cave?)
-      } else {
+         // Turn check
+         turnCheck();
+         // Update mobs
+         mobUpdate(delta);
+         // Update items
+         itemUpdate(delta);
+      } else if(levelStack.floors[levelStack.currentFloor]->floorType==DUNGEON){
          // Update visibility
          updateVisible((int)-x, (int)-z);
          // Turn check
          turnCheck();
          // Update mobs
          mobUpdate(delta);
+         // Update items
+         itemUpdate(delta);
+      } else {
+         fprintf(stderr, "ERROR: Unknown floor type %d!\n", levelStack.floors[levelStack.currentFloor]->floorType);
       }
    }
+   return;
 }
 
 
@@ -1851,6 +2274,10 @@ int i, j, k;
       // Setup clouds
       xCloudOffset = 0;
       yCloudOffset = 0;
+      // Set item flags
+      hasSword = false;
+      hasArmour = false;
+      hasBow = false;
 
       /* Register all our custom colours and textures */
       /* COLOURS */
@@ -1871,6 +2298,8 @@ int i, j, k;
       setUserColour(DOOR_UP_ID, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
       setUserColour(DOOR_DEC_ID, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
       setUserColour(BOX_ID, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+      setUserColour(CAVE_FLOOR_ID, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+      setUserColour(CAVE_CEILING_ID, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
       
 
       /* TEXTURES */
@@ -1891,6 +2320,8 @@ int i, j, k;
       setAssignedTexture(DOOR_UP_ID, DOOR_UP_TEX);
       setAssignedTexture(DOOR_DEC_ID, DOOR_DEC_TEX);
       setAssignedTexture(BOX_ID, BOX_TEX);
+      setAssignedTexture(CAVE_FLOOR_ID, CAVE_FLOOR_TEX);
+      setAssignedTexture(CAVE_CEILING_ID, CAVE_CEILING_TEX);
 
 
       // Load up level 0 to start

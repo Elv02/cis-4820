@@ -112,6 +112,28 @@ struct mob {
 };
 
 /*
+ * Struct for storing basic item data
+ */
+struct item {
+    // Position of the item on the world map
+    struct position location;
+    // Track if item is active(useable) or inactive(picked up)
+    bool is_active;
+    // Item's symbol to draw onto the entity array
+    char symbol; 
+    // Item's mesh ID (Since this needs to be offset from number of mobs)
+    int meshID;
+    // World coordinates for the item
+    float worldX;
+    float worldY;
+    float worldZ;
+    // World rotation for the item
+    float rotX;
+    float rotY;
+    float rotZ;
+};
+
+/*
  * Struct for storing individual room related data
  */
 struct room {
@@ -145,10 +167,16 @@ struct room {
  * Struct that contains floor data
  */
 struct floor {
+    // Track if the stairs are locked
+    bool stairLocked;
+    // Track if the player has the key for this floor in their possession
+    bool hasKey;
     // Track level type
     int floorType;
     // Track how many mobs are on this floor (used for mob list allocation)
     int mobCount;
+    // Track how many items are on this floor (use for item list allocation)
+    int itemCount;
     // floor size
     int floorWidth;
     int floorHeight;
@@ -171,6 +199,8 @@ struct floor {
     int** isVisible;
     // 1D Mob list containing references to all mobs on a given floor.
     struct mob* mobs;
+    // 1D Item list containing references to all items on a given floor.
+    struct item* items;
     // 2D Struct array containing room data for this floor
     struct room** rooms;
 };

@@ -1544,7 +1544,7 @@ void setTextureOffset(int id, float uoffset, float voffset) {
 void setMeshID(int id, int meshNumber, float xpos, float ypos, float zpos) {
 
    if (id > MAXMESH-1) {
-      printf("ERROR, setMeshID(), the id must be less than %d\n", MAXMESH);
+      printf("ERROR, setMeshID(), the id (%d) must be less than %d\n", id, MAXMESH);
       exit(1);
    }
 	// set that mesh id as active

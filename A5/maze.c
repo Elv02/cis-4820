@@ -29,6 +29,7 @@ struct floor* initMaze(int floorWidth, int floorHeight, int floorType){
     toRet->floorHeight = floorHeight;
     toRet->mobCount = 0; // Start with 0 mobs
     toRet->drawDist = 0.0; // Start with 0 draw dist
+    toRet->hasKey = false;
 
     // Allocate floor data
     toRet->floorData = (char**)malloc(toRet->floorWidth * sizeof(char*));
@@ -75,6 +76,20 @@ struct floor* initMaze(int floorWidth, int floorHeight, int floorType){
                     free(toRet->heightMap[--i]);
                 }
                 free(toRet->heightMap);
+                free(toRet);
+                return NULL;
+            }
+        }
+        // Init floorplan
+        for(i = 0; i < toRet->floorWidth; i++){
+            toRet->floorData[i] = (char*)malloc(toRet->floorHeight * sizeof(char));
+            if(toRet->floorData[i] == NULL){
+                fprintf(stderr, "ERROR: floor data for column %d could not be allocated! Aborting!", i);
+                // Attempt cleanup!
+                while(i>=0){
+                    free(toRet->floorData[--i]);
+                }
+                free(toRet->floorData);
                 free(toRet);
                 return NULL;
             }
@@ -253,6 +268,7 @@ void genCave(struct floor* maze){
     for(x = 0; x < maze->floorWidth; x++){
         for(y = 0; y < maze->floorHeight; y++){
             maze->floorEntities[x][y] = ' ';
+            maze->floorData[x][y] = '.'; // Open floor tiles
         }
     }
     // Seed the random number generator
@@ -267,8 +283,10 @@ void genCave(struct floor* maze){
     // Begin iterating over the heightmap
     for(y = 0; y < maze->floorHeight; y++){
         for(x = 0; x < maze->floorWidth; x++){
-            // Get a float value for this coordinate
-            maze->heightMap[x][y] = perlin2d((float)x, (float)y, 0.1, 1);
+            // Get a noise value for this coordinate
+            maze->heightMap[x][y] = perlin2d((float)x, (float)y, 0.1, 2);
+            // Offset to range [-1,1]
+            maze->heightMap[x][y] -= 1.0;
         }
     }
 
@@ -291,8 +309,35 @@ void genCave(struct floor* maze){
         }
     }
 
-    // TODO: Place responsive mobs + loot
+    // Place responsive mobs
+    int numToPlace = randRange(2, 4);
+    while(true){
+        pen.x = randRange(25, 75);
+        pen.y = randRange(25, 75);
+        if(maze->floorEntities[pen.x][pen.y]==' '){
+            maze->floorEntities[pen.x][pen.y] = 'F';
+            maze->mobCount++;
+            if(maze->mobCount>=numToPlace) break;
+        } 
+    }
+    // Allocate mob array now that we know amount of mobs for the floor
+    maze->mobs = (struct mob*)malloc(maze->mobCount * sizeof(struct mob));
 
+    // Place the key
+    while(true){
+        x = randRange(0, 2);
+        y = randRange(0, 2);
+        pen.x = randRange(25, 75);
+        pen.y = randRange(25, 75);
+        if(maze->floorEntities[pen.x][pen.y] == ' ' && !isBlockingDoor(maze, pen.x, pen.y)){
+            maze->floorEntities[pen.x][pen.y] = 'K';
+            maze->itemCount++;
+            break;
+        } 
+    }
+
+    // Allocate item array now that we know amount of items for the floor
+    maze->items = (struct item*)malloc(maze->itemCount * sizeof(struct item));
     return;
 }
 
@@ -699,6 +744,76 @@ void populateFloor(struct floor* maze){
             }
         }
     }
+
+    // Track if we've placed a key for this floor
+    bool keyPlaced = false;
+
+    // Place an item in each room
+    for(y = 0; y < 3; y++){
+        for(x = 0; x < 3; x++){
+            int itemType = randRange(1, 5);
+            char toDraw = ' ';
+            switch(itemType){
+                case 1:
+                    toDraw = 'O'; // Open Chest
+                    break;
+                case 2:
+                    toDraw = 'A'; // Armour
+                    break;
+                case 3:
+                    toDraw = 'S'; // Sword
+                    break;
+                case 4:
+                    toDraw = 'K'; // Key
+                    break;
+                case 5:
+                    toDraw = '*'; // Coin
+                    break;
+                default:
+                    toDraw = 'E'; // Error
+                    break;
+            }
+            while(true){
+                pen.x = randRange(maze->rooms[x][y].origin.x + 1, maze->rooms[x][y].corner.x - 1);
+                pen.y = randRange(maze->rooms[x][y].origin.y + 1, maze->rooms[x][y].corner.y - 1);
+                if(maze->floorEntities[pen.x][pen.y] == ' ' && !isBlockingDoor(maze, pen.x, pen.y)){
+                    maze->floorEntities[pen.x][pen.y] = toDraw;
+                    maze->itemCount++;
+                    if(toDraw=='K') keyPlaced = true;
+                    break;
+                } 
+            }
+        }
+    }
+
+    // If key was *not* placed, place one!
+    if(!keyPlaced){
+        while(true){
+            x = randRange(0, 2);
+            y = randRange(0, 2);
+            pen.x = randRange(maze->rooms[x][y].origin.x + 1, maze->rooms[x][y].corner.x - 1);
+            pen.y = randRange(maze->rooms[x][y].origin.y + 1, maze->rooms[x][y].corner.y - 1);
+            if(maze->floorEntities[pen.x][pen.y] == ' ' && !isBlockingDoor(maze, pen.x, pen.y)){
+                maze->floorEntities[pen.x][pen.y] = 'K';
+                maze->itemCount++;
+                break;
+            } 
+        }
+    }
+    // Place a bow somewhere in the level
+    while(true){
+        x = randRange(0, 2);
+        y = randRange(0, 2);
+        pen.x = randRange(maze->rooms[x][y].origin.x + 1, maze->rooms[x][y].corner.x - 1);
+        pen.y = randRange(maze->rooms[x][y].origin.y + 1, maze->rooms[x][y].corner.y - 1);
+        if(maze->floorEntities[pen.x][pen.y] == ' ' && !isBlockingDoor(maze, pen.x, pen.y)){
+            maze->floorEntities[pen.x][pen.y] = '}';
+            maze->itemCount++;
+            break;
+        } 
+    }
+    // Allocate item array now that we know amount of mobs for the floor
+    maze->items = (struct item*)malloc(maze->itemCount * sizeof(struct item));
 
     return;
 }
@@ -1208,14 +1323,14 @@ bool positionClear(struct floor* maze, struct position p){
             break;
     }
     // Check active mobs
-    /*int id;
+    int id;
     for(id = 0; id < maze->mobCount; id++){
         if(!maze->mobs[id].is_active){
             continue;
         } else if(posMatch(maze->mobs[id].location, p)){
             return false; // Space is occupied
         }
-    }*/
+    }
     return true;
 }
 
@@ -1224,6 +1339,7 @@ struct position getRoomAtPosition(struct floor* maze, struct position p){
     struct position toRet;
     toRet.x = -1;
     toRet.y = -1;
+    if(maze->floorType==CAVE) return toRet;
     for(y = 0; y <= 2; y++){
         for(x = 0; x <= 2; x++){
             if(maze->rooms[x][y].origin.x < p.x && maze->rooms[x][y].origin.y < p.y && maze->rooms[x][y].corner.x > p.x && maze->rooms[x][y].corner.y > p.y){
